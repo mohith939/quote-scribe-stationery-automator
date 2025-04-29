@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { mockProducts } from "@/data/mockData";
 import { useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { ImportResult, Product } from "@/types";
-import { FileExcel, Upload } from "lucide-react";
+import { File, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -196,12 +195,12 @@ export function ProductCatalog() {
             >
               {isImporting ? (
                 <span className="flex items-center">
-                  <FileExcel className="mr-2 h-4 w-4 animate-pulse" />
+                  <File className="mr-2 h-4 w-4 animate-pulse" />
                   Importing...
                 </span>
               ) : (
                 <span className="flex items-center">
-                  <FileExcel className="mr-2 h-4 w-4" />
+                  <File className="mr-2 h-4 w-4" />
                   Import from Excel
                 </span>
               )}
