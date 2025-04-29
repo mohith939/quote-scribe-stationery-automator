@@ -1,32 +1,65 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
-import { FileText, Send } from "lucide-react";
+import { FileText, RefreshCw, Send } from "lucide-react";
 import { EmailMessage } from "@/types";
+import { useQuery } from "@tanstack/react-query";
+import { fetchUnreadEmails, markEmailAsRead } from "@/services/gmailService";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   
-  const handleProcessEmail = (email: EmailMessage, isAutomatic: boolean = false) => {
+  // Fetch emails using React Query
+  const { data: emails, isLoading, isError, refetch } = useQuery({
+    queryKey: ['unreadEmails'],
+    queryFn: fetchUnreadEmails,
+    // Fall back to mock data if fetching fails (for development purposes)
+    placeholderData: mockEmails,
+    // Don't refetch automatically too often
+    staleTime: 60000, // 1 minute
+    retry: 1,
+    onError: (error) => {
+      console.error("Failed to fetch emails:", error);
+      toast({
+        title: "Error fetching emails",
+        description: "Using mock data instead. Check your connection to Gmail.",
+        variant: "destructive"
+      });
+    }
+  });
+  
+  const handleProcessEmail = async (email: EmailMessage, isAutomatic: boolean = false) => {
     setProcessingEmailId(email.id);
     
-    // Simulate processing time
-    setTimeout(() => {
-      const result = isAutomatic ? processEmailAutomatically(email) : processEmailManually(email);
+    try {
+      // Mark as read in Gmail (if we're connected)
+      await markEmailAsRead(email.id).catch(console.error);
       
+      // Process the email
+      setTimeout(() => {
+        const result = isAutomatic ? processEmailAutomatically(email) : processEmailManually(email);
+        
+        toast({
+          title: result.title,
+          description: result.description,
+        });
+        
+        setProcessingEmailId(null);
+        setProcessedEmails(prev => [...prev, email.id]);
+      }, 1500);
+    } catch (error) {
+      console.error("Error processing email:", error);
       toast({
-        title: result.title,
-        description: result.description,
+        title: "Error Processing Email",
+        description: "Failed to process the email. Please try again.",
+        variant: "destructive"
       });
-      
       setProcessingEmailId(null);
-      setProcessedEmails(prev => [...prev, email.id]);
-    }, 1500);
+    }
   };
 
   const processEmailAutomatically = (email: EmailMessage) => {
@@ -76,19 +109,48 @@ export function EmailInbox() {
     };
   };
 
-  const displayEmails = mockEmails.filter(email => !processedEmails.includes(email.id));
+  // Filter out processed emails
+  const displayEmails = (emails || []).filter(email => !processedEmails.includes(email.id));
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Unprocessed Emails</CardTitle>
-        <CardDescription>
-          Recent unprocessed emails requiring quotation
-        </CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Unprocessed Emails</CardTitle>
+          <CardDescription>
+            Recent unprocessed emails requiring quotation
+          </CardDescription>
+        </div>
+        <Button 
+          variant="outline" 
+          size="icon" 
+          onClick={() => refetch()} 
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {displayEmails.length > 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-pulse flex flex-col items-center">
+                <RefreshCw className="h-8 w-8 mb-2" />
+                <p className="text-sm text-muted-foreground">Loading emails...</p>
+              </div>
+            </div>
+          ) : isError ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>Failed to load emails</p>
+              <Button 
+                variant="outline" 
+                onClick={() => refetch()} 
+                className="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : displayEmails.length > 0 ? (
             displayEmails.map((email) => (
               <div
                 key={email.id}
@@ -144,7 +206,7 @@ export function EmailInbox() {
               </div>
             ))
           ) : (
-            <div className="text-center py-4 text-muted-foreground">
+            <div className="text-center py-8 text-muted-foreground">
               No unprocessed emails found
             </div>
           )}

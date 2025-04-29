@@ -6,6 +6,7 @@ import EmailInbox from "@/components/dashboard/EmailInbox";
 import QuoteHistory from "@/components/dashboard/QuoteHistory";
 import ProductCatalog from "@/components/dashboard/ProductCatalog";
 import ProcessEmail from "@/components/dashboard/ProcessEmail";
+import GmailSettings from "@/components/dashboard/GmailSettings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -53,12 +54,13 @@ const Index = () => {
         <QuickStats />
         
         <Tabs defaultValue="inbox" className="mt-6">
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-6 mb-8">
             <TabsTrigger value="inbox">Email Inbox</TabsTrigger>
             <TabsTrigger value="process">Process Email</TabsTrigger>
             <TabsTrigger value="templates">Quote Templates</TabsTrigger>
             <TabsTrigger value="history">Quote History</TabsTrigger>
             <TabsTrigger value="products">Product Catalog</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
           
           <TabsContent value="inbox" className="space-y-4">
@@ -217,6 +219,27 @@ const Index = () => {
           
           <TabsContent value="products">
             <ProductCatalog />
+          </TabsContent>
+          
+          <TabsContent value="settings">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <GmailSettings />
+              <Card>
+                <CardHeader>
+                  <CardTitle>Google Sheets Connection</CardTitle>
+                  <CardDescription>
+                    Connect to Google Sheets to store product data and quotes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md bg-yellow-50 p-4 mb-4">
+                    <p className="text-sm text-yellow-800">
+                      This feature will be implemented in the next phase.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

@@ -49,3 +49,17 @@ export interface ExportOptions {
   includeCompanyLogo: boolean;
   includeTimestamp: boolean;
 }
+
+export interface GmailConnectionConfig {
+  isConnected: boolean;
+  lastSyncTime: string | null;
+  autoRefreshInterval: number; // in minutes
+  userName: string | null;
+}
+
+export interface GoogleSheetsConfig {
+  isConnected: boolean;
+  spreadsheetId: string | null;
+  quotesSheetName: string;
+  productsSheetName: string;
+}
