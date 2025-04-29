@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { mockProducts } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
+import { Send, Printer, Download } from "lucide-react";
 
 export function ProcessEmail() {
   const { toast } = useToast();
@@ -20,7 +21,46 @@ export function ProcessEmail() {
     calculatedPrice: 200.00 // 500 * 0.40
   });
 
+  const [quoteGenerated, setQuoteGenerated] = useState(false);
+
+  const handleQuantityChange = (newQuantity: number) => {
+    // Find the appropriate price based on quantity
+    const product = mockProducts.find(p => 
+      p.name === emailData.productName && 
+      newQuantity >= p.minQuantity && 
+      newQuantity <= p.maxQuantity
+    );
+    
+    const pricePerUnit = product ? product.pricePerUnit : 0;
+    const calculatedPrice = pricePerUnit * newQuantity;
+    
+    setEmailData({
+      ...emailData,
+      quantity: newQuantity,
+      calculatedPrice
+    });
+  };
+
+  const handleProductChange = (newProduct: string) => {
+    // Find the appropriate price based on selected product and current quantity
+    const product = mockProducts.find(p => 
+      p.name === newProduct && 
+      emailData.quantity >= p.minQuantity && 
+      emailData.quantity <= p.maxQuantity
+    );
+    
+    const pricePerUnit = product ? product.pricePerUnit : 0;
+    const calculatedPrice = pricePerUnit * emailData.quantity;
+    
+    setEmailData({
+      ...emailData,
+      productName: newProduct,
+      calculatedPrice
+    });
+  };
+
   const handleGenerate = () => {
+    setQuoteGenerated(true);
     toast({
       title: "Quote Generated",
       description: "A quote has been generated and saved",
@@ -31,6 +71,43 @@ export function ProcessEmail() {
     toast({
       title: "Quote Sent",
       description: "The quote has been sent to the customer",
+    });
+    setQuoteGenerated(false);
+  };
+
+  const handlePrint = () => {
+    toast({
+      title: "Printing Quote",
+      description: "The quote has been sent to the printer",
+    });
+    // In a real app, we would use window.print() or a library like react-to-print
+  };
+
+  const handleExport = () => {
+    // Create CSV content
+    const csvContent = `
+Product Name,${emailData.productName}
+Quantity,${emailData.quantity}
+Price Per Unit,$${(emailData.calculatedPrice / emailData.quantity).toFixed(2)}
+Total Price,$${emailData.calculatedPrice.toFixed(2)}
+Customer,${emailData.from}
+Date,${new Date().toLocaleDateString()}
+    `.trim();
+    
+    // Create a blob and download it
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quote-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Quote Exported",
+      description: "The quote has been exported as CSV",
     });
   };
 
@@ -43,7 +120,7 @@ export function ProcessEmail() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="from">From</Label>
@@ -78,7 +155,7 @@ export function ProcessEmail() {
               <Label htmlFor="product">Product</Label>
               <Select 
                 value={emailData.productName}
-                onValueChange={(value) => setEmailData({...emailData, productName: value})}
+                onValueChange={handleProductChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a product" />
@@ -98,7 +175,7 @@ export function ProcessEmail() {
                 id="quantity"
                 type="number"
                 value={emailData.quantity}
-                onChange={(e) => setEmailData({...emailData, quantity: parseInt(e.target.value)})}
+                onChange={(e) => handleQuantityChange(parseInt(e.target.value))}
               />
             </div>
           </div>
@@ -116,14 +193,31 @@ export function ProcessEmail() {
                   ${emailData.calculatedPrice.toFixed(2)}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Unit Price: $0.40 × {emailData.quantity} units
+                  Unit Price: ${(emailData.calculatedPrice / emailData.quantity).toFixed(2)} × {emailData.quantity} units
                 </div>
               </div>
             </div>
             
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleGenerate}>Preview Quote</Button>
-              <Button onClick={handleSend}>Send Quote</Button>
+              <Button variant="outline" onClick={handleGenerate}>
+                Preview Quote
+              </Button>
+              <Button onClick={handleSend} disabled={!quoteGenerated}>
+                <Send className="mr-2 h-4 w-4" />
+                Send Quote
+              </Button>
+              {quoteGenerated && (
+                <>
+                  <Button variant="outline" onClick={handlePrint}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print
+                  </Button>
+                  <Button variant="outline" onClick={handleExport}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export CSV
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </form>

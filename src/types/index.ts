@@ -34,3 +34,18 @@ export interface ImportResult {
   message: string;
   productsAdded: number;
 }
+
+export interface QuoteTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  greeting: string;
+  body: string;
+  signoff: string;
+}
+
+export interface ExportOptions {
+  format: 'csv' | 'pdf' | 'xlsx';
+  includeCompanyLogo: boolean;
+  includeTimestamp: boolean;
+}
