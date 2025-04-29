@@ -28,3 +28,9 @@ export interface EmailMessage {
   body: string;
   date: string;
 }
+
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  productsAdded: number;
+}

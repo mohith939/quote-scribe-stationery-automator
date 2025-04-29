@@ -3,15 +3,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
+import { useState } from "react";
 
 export function EmailInbox() {
   const { toast } = useToast();
+  const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   
-  const handleProcessEmail = (emailId: string) => {
-    toast({
-      title: "Processing Email",
-      description: "Email is being analyzed for quotation",
-    });
+  const handleProcessEmail = (emailId: string, isAutomatic: boolean = false) => {
+    setProcessingEmailId(emailId);
+    
+    // Simulate processing time
+    setTimeout(() => {
+      toast({
+        title: isAutomatic ? "Auto-Generated Quote" : "Processing Email",
+        description: isAutomatic 
+          ? "Quote has been automatically generated and sent" 
+          : "Email has been added to manual processing queue",
+      });
+      setProcessingEmailId(null);
+    }, 1500);
   };
 
   return (
@@ -45,14 +55,16 @@ export function EmailInbox() {
                     variant="outline" 
                     size="sm" 
                     onClick={() => handleProcessEmail(email.id)}
+                    disabled={processingEmailId === email.id}
                   >
-                    Process Manually
+                    {processingEmailId === email.id ? "Processing..." : "Process Manually"}
                   </Button>
                   <Button 
                     size="sm" 
-                    onClick={() => handleProcessEmail(email.id)}
+                    onClick={() => handleProcessEmail(email.id, true)}
+                    disabled={processingEmailId === email.id}
                   >
-                    Auto-Generate Quote
+                    {processingEmailId === email.id ? "Processing..." : "Auto-Generate Quote"}
                   </Button>
                 </div>
               </div>

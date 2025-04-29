@@ -3,10 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { mockProducts } from "@/data/mockData";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useToast } from "@/components/ui/use-toast";
+import { ImportResult } from "@/types";
 
 export function ProductCatalog() {
   const [isEditing, setIsEditing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
   
   // Group products by name for better display
   const groupedProducts: Record<string, typeof mockProducts> = {};
@@ -16,6 +21,58 @@ export function ProductCatalog() {
     }
     groupedProducts[product.name].push(product);
   });
+
+  const handleFileUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setIsImporting(true);
+    
+    // Check if the file is an Excel file
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
+      toast({
+        title: "Invalid File Format",
+        description: "Please upload an Excel (.xlsx, .xls) or CSV file.",
+        variant: "destructive"
+      });
+      setIsImporting(false);
+      return;
+    }
+
+    // In a real application, we would process the Excel file here
+    // For now, we'll simulate a successful import
+    setTimeout(() => {
+      // Simulate successful import
+      const result: ImportResult = {
+        success: true, 
+        message: "Successfully imported products",
+        productsAdded: 5
+      };
+      
+      if (result.success) {
+        toast({
+          title: "Import Successful",
+          description: `Added ${result.productsAdded} products to catalog.`
+        });
+      } else {
+        toast({
+          title: "Import Failed",
+          description: result.message,
+          variant: "destructive"
+        });
+      }
+      setIsImporting(false);
+      
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }, 1500);
+  };
 
   return (
     <Card>
@@ -27,6 +84,21 @@ export function ProductCatalog() {
           </CardDescription>
         </div>
         <div className="space-x-2">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".xlsx,.xls,.csv" 
+            onChange={handleFileChange}
+          />
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleFileUploadClick}
+            disabled={isImporting}
+          >
+            {isImporting ? "Importing..." : "Import from Excel"}
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 
