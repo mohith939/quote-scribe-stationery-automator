@@ -105,7 +105,7 @@ export function ProcessEmail() {
         emailBody
       ).catch(() => false);
       
-      // Log quote to sheet
+      // Log quote to sheet with properly typed status
       await logQuoteToSheet({
         timestamp: new Date().toISOString(),
         customerName: parsedInfo.customerName,
@@ -114,7 +114,7 @@ export function ProcessEmail() {
         quantity: emailData.quantity,
         pricePerUnit: pricePerUnit,
         totalAmount: emailData.calculatedPrice,
-        status: emailSent ? 'Sent' : 'Failed'
+        status: emailSent ? 'Sent' as const : 'Failed' as const
       }).catch(console.error);
       
       toast({

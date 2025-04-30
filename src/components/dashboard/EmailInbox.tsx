@@ -130,7 +130,8 @@ export function EmailInbox() {
       quantity: parsedInfo.quantity,
       pricePerUnit: pricing.pricePerUnit,
       totalAmount: pricing.totalPrice,
-      status: emailSent ? 'Sent' : 'Failed'
+      // Fix: Explicitly cast the status as one of the allowed literal types
+      status: emailSent ? 'Sent' as const : 'Failed' as const
     };
     
     await logQuoteToSheet(quoteData).catch(console.error);
