@@ -14,15 +14,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
+import { defaultQuoteTemplate } from "@/services/quoteService";
 
 const Index = () => {
   const { toast } = useToast();
   const [templateData, setTemplateData] = useState({
-    name: "Default Template",
-    subject: "Your Quotation for {product}",
-    greeting: "Dear {customer},",
-    body: "Thank you for your inquiry. Please find our quotation below:\n\nProduct: {product}\nQuantity: {quantity}\nPrice per Unit: ${price_per_unit}\nTotal Amount: ${total_amount}\n\nThis quotation is valid for 14 days from the date of this email.",
-    signoff: "Best regards,\nYour Stationery Shop"
+    name: defaultQuoteTemplate.name,
+    subject: defaultQuoteTemplate.subject,
+    greeting: defaultQuoteTemplate.greeting,
+    body: defaultQuoteTemplate.body,
+    signoff: defaultQuoteTemplate.signoff
   });
 
   const handleTemplateChange = (field: string, value: string) => {
@@ -89,8 +90,8 @@ const Index = () => {
                       <div className="my-4 border-y py-4">
                         <p><strong>Product:</strong> A4 Paper - 80gsm</p>
                         <p><strong>Quantity:</strong> 500 sheets</p>
-                        <p><strong>Price per Unit:</strong> $0.40</p>
-                        <p className="font-bold mt-2">Total Amount: $200.00</p>
+                        <p><strong>Price per Unit:</strong> ₹0.40</p>
+                        <p className="font-bold mt-2">Total Amount: ₹200.00</p>
                       </div>
                       <p>This quotation is valid for 14 days from the date of this email.</p>
                       <p>Please let us know if you would like to proceed with this order.</p>
@@ -200,7 +201,8 @@ const Index = () => {
                           .replace(/{product}/g, "A4 Paper - 80gsm")
                           .replace(/{quantity}/g, "500")
                           .replace(/{price_per_unit}/g, "0.40")
-                          .replace(/{total_amount}/g, "200.00")}
+                          .replace(/{total_amount}/g, "200.00")
+                          .replace(/\$/g, "₹")}
                       </div>
                       
                       <div className="mt-4 whitespace-pre-line">

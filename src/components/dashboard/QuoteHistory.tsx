@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { mockQuoteLogs } from "@/data/mockData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 export function QuoteHistory() {
   // Function to render status badge with appropriate color
@@ -22,6 +23,35 @@ export function QuoteHistory() {
     }
   };
 
+  const handleExportCSV = () => {
+    // Create CSV content from mockQuoteLogs
+    const headers = "Date,Customer,Email,Product,Quantity,Amount,Status";
+    const rows = mockQuoteLogs.map(quote => {
+      return [
+        new Date(quote.timestamp).toLocaleDateString(),
+        quote.customerName,
+        quote.emailAddress,
+        quote.extractedDetails.product || "N/A",
+        quote.extractedDetails.quantity || "-",
+        `₹${quote.totalQuotedAmount.toFixed(2)}`,
+        quote.status
+      ].join(",");
+    });
+    
+    const csvContent = [headers, ...rows].join("\n");
+    
+    // Create a blob and download it
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quote-history-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Card className="col-span-3">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -31,7 +61,8 @@ export function QuoteHistory() {
             Recent quotations sent to customers
           </CardDescription>
         </div>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          <Download className="h-4 w-4 mr-2" />
           Export to CSV
         </Button>
       </CardHeader>
@@ -58,7 +89,7 @@ export function QuoteHistory() {
                 <TableCell>{quote.extractedDetails.product || "N/A"}</TableCell>
                 <TableCell className="text-right">{quote.extractedDetails.quantity || "-"}</TableCell>
                 <TableCell className="text-right">
-                  ${quote.totalQuotedAmount.toFixed(2)}
+                  ₹{quote.totalQuotedAmount.toFixed(2)}
                 </TableCell>
                 <TableCell>{renderStatusBadge(quote.status)}</TableCell>
                 <TableCell className="text-right">

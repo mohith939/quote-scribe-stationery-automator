@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { mockProducts } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { Send, Printer, Download } from "lucide-react";
+import { parseEmailForQuotation } from "@/services/emailParserService";
+import { sendQuoteEmail } from "@/services/gmailService";
+import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
+import { logQuoteToSheet } from "@/services/gmailService";
 
 export function ProcessEmail() {
   const { toast } = useToast();
@@ -67,12 +71,71 @@ export function ProcessEmail() {
     });
   };
 
-  const handleSend = () => {
-    toast({
-      title: "Quote Sent",
-      description: "The quote has been sent to the customer",
-    });
-    setQuoteGenerated(false);
+  const handleSend = async () => {
+    try {
+      // Parse the email for customer name and email
+      const parsedInfo = parseEmailForQuotation({
+        id: "manual",
+        from: emailData.from,
+        subject: emailData.subject,
+        body: emailData.body,
+        date: new Date().toISOString()
+      });
+      
+      // Generate email content
+      const emailSubject = generateEmailSubject(defaultQuoteTemplate, emailData.productName);
+      const product = mockProducts.find(p => 
+        p.name === emailData.productName && 
+        emailData.quantity >= p.minQuantity && 
+        emailData.quantity <= p.maxQuantity
+      );
+      const pricePerUnit = product ? product.pricePerUnit : 0;
+      
+      const emailBody = generateQuoteEmailBody(
+        defaultQuoteTemplate,
+        parsedInfo,
+        pricePerUnit,
+        emailData.calculatedPrice
+      );
+      
+      // Send the email
+      const emailSent = await sendQuoteEmail(
+        parsedInfo.emailAddress,
+        emailSubject,
+        emailBody
+      ).catch(() => false);
+      
+      // Log quote to sheet
+      await logQuoteToSheet({
+        timestamp: new Date().toISOString(),
+        customerName: parsedInfo.customerName,
+        emailAddress: parsedInfo.emailAddress,
+        product: emailData.productName,
+        quantity: emailData.quantity,
+        pricePerUnit: pricePerUnit,
+        totalAmount: emailData.calculatedPrice,
+        status: emailSent ? 'Sent' : 'Failed'
+      }).catch(console.error);
+      
+      toast({
+        title: emailSent ? "Quote Sent" : "Failed to Send Quote",
+        description: emailSent 
+          ? "The quote has been sent to the customer" 
+          : "There was an error sending the quote. Check your Gmail connection.",
+        variant: emailSent ? "default" : "destructive"
+      });
+      
+      if (emailSent) {
+        setQuoteGenerated(false);
+      }
+    } catch (error) {
+      console.error("Error sending quote:", error);
+      toast({
+        title: "Error Sending Quote",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handlePrint = () => {
@@ -88,8 +151,8 @@ export function ProcessEmail() {
     const csvContent = `
 Product Name,${emailData.productName}
 Quantity,${emailData.quantity}
-Price Per Unit,$${(emailData.calculatedPrice / emailData.quantity).toFixed(2)}
-Total Price,$${emailData.calculatedPrice.toFixed(2)}
+Price Per Unit,₹${(emailData.calculatedPrice / emailData.quantity).toFixed(2)}
+Total Price,₹${emailData.calculatedPrice.toFixed(2)}
 Customer,${emailData.from}
 Date,${new Date().toLocaleDateString()}
     `.trim();
@@ -190,10 +253,10 @@ Date,${new Date().toLocaleDateString()}
               </div>
               <div className="text-right">
                 <div className="text-2xl font-bold">
-                  ${emailData.calculatedPrice.toFixed(2)}
+                  ₹{emailData.calculatedPrice.toFixed(2)}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Unit Price: ${(emailData.calculatedPrice / emailData.quantity).toFixed(2)} × {emailData.quantity} units
+                  Unit Price: ₹{(emailData.calculatedPrice / emailData.quantity).toFixed(2)} × {emailData.quantity} units
                 </div>
               </div>
             </div>

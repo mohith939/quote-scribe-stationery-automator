@@ -58,7 +58,8 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
 export const sendQuoteEmail = async (
   to: string, 
   subject: string, 
-  body: string
+  body: string,
+  originalEmailId?: string // Optional reference to the original email
 ): Promise<boolean> => {
   try {
     const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
@@ -70,7 +71,8 @@ export const sendQuoteEmail = async (
         action: 'sendEmail',
         to,
         subject,
-        body
+        body,
+        originalEmailId
       })
     });
     
@@ -82,6 +84,41 @@ export const sendQuoteEmail = async (
     return data.success;
   } catch (error) {
     console.error("Error sending email:", error);
+    return false;
+  }
+}
+
+// Log quote information to Google Sheets (Phase 6)
+export const logQuoteToSheet = async (quoteData: {
+  timestamp: string;
+  customerName: string;
+  emailAddress: string;
+  product: string;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
+}): Promise<boolean> => {
+  try {
+    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'logQuote',
+        quoteData
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to log quote: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.success;
+  } catch (error) {
+    console.error("Error logging quote to sheet:", error);
     return false;
   }
 }

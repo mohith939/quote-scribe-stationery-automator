@@ -1,12 +1,17 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
-import { FileText, RefreshCw, Send } from "lucide-react";
-import { EmailMessage } from "@/types";
+import { AlertCircle, FileText, RefreshCw, Send } from "lucide-react";
+import { EmailMessage, QuoteLog } from "@/types";
 import { useQuery } from "@tanstack/react-query";
-import { fetchUnreadEmails, markEmailAsRead } from "@/services/gmailService";
+import { fetchUnreadEmails, logQuoteToSheet, markEmailAsRead, sendQuoteEmail } from "@/services/gmailService";
+import { parseEmailForQuotation } from "@/services/emailParserService";
+import { calculatePrice } from "@/services/pricingService";
+import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
+import { mockProducts } from "@/data/mockData";
 
 export function EmailInbox() {
   const { toast } = useToast();
@@ -17,21 +22,23 @@ export function EmailInbox() {
   const { data: emails, isLoading, isError, refetch } = useQuery({
     queryKey: ['unreadEmails'],
     queryFn: fetchUnreadEmails,
-    // Fall back to mock data if fetching fails (for development purposes)
     placeholderData: mockEmails,
-    // Don't refetch automatically too often
     staleTime: 60000, // 1 minute
     retry: 1,
-    onError: (error) => {
-      console.error("Failed to fetch emails:", error);
-      toast({
-        title: "Error fetching emails",
-        description: "Using mock data instead. Check your connection to Gmail.",
-        variant: "destructive"
-      });
+    meta: {
+      onSettled: (data, error) => {
+        if (error) {
+          console.error("Failed to fetch emails:", error);
+          toast({
+            title: "Error fetching emails",
+            description: "Using mock data instead. Check your connection to Gmail.",
+            variant: "destructive"
+          });
+        }
+      }
     }
   });
-  
+
   const handleProcessEmail = async (email: EmailMessage, isAutomatic: boolean = false) => {
     setProcessingEmailId(email.id);
     
@@ -40,16 +47,28 @@ export function EmailInbox() {
       await markEmailAsRead(email.id).catch(console.error);
       
       // Process the email
-      setTimeout(() => {
-        const result = isAutomatic ? processEmailAutomatically(email) : processEmailManually(email);
-        
-        toast({
-          title: result.title,
-          description: result.description,
-        });
-        
-        setProcessingEmailId(null);
-        setProcessedEmails(prev => [...prev, email.id]);
+      setTimeout(async () => {
+        try {
+          const result = isAutomatic 
+            ? await processEmailAutomatically(email) 
+            : await processEmailManually(email);
+          
+          toast({
+            title: result.title,
+            description: result.description,
+          });
+          
+          setProcessedEmails(prev => [...prev, email.id]);
+        } catch (error) {
+          console.error("Error in email processing:", error);
+          toast({
+            title: "Processing Error",
+            description: "There was an error processing this email. Please try again.",
+            variant: "destructive"
+          });
+        } finally {
+          setProcessingEmailId(null);
+        }
       }, 1500);
     } catch (error) {
       console.error("Error processing email:", error);
@@ -62,47 +81,80 @@ export function EmailInbox() {
     }
   };
 
-  const processEmailAutomatically = (email: EmailMessage) => {
-    // Logic to extract product and quantity from email body
-    const emailBody = email.body.toLowerCase();
-    let product = "";
-    let quantity = 0;
+  const processEmailAutomatically = async (email: EmailMessage) => {
+    // Parse the email using our new parser service
+    const parsedInfo = parseEmailForQuotation(email);
     
-    // Simple pattern matching for demo purposes
-    if (emailBody.includes("a4") || emailBody.includes("paper")) {
-      product = "A4 Paper - 80gsm";
-      
-      // Try to extract quantity
-      const quantityMatch = emailBody.match(/(\d+)\s*(sheets?|pcs?|pieces?)/i);
-      quantity = quantityMatch ? parseInt(quantityMatch[1]) : 500; // Default to 500 if not found
-    } else if (emailBody.includes("pen") || emailBody.includes("ballpoint")) {
-      product = "Ballpoint Pens - Blue";
-      
-      // Try to extract quantity
-      const quantityMatch = emailBody.match(/(\d+)\s*(pens?|pcs?|pieces?)/i);
-      quantity = quantityMatch ? parseInt(quantityMatch[1]) : 50; // Default to 50 if not found
-    } else if (emailBody.includes("stapler")) {
-      product = "Stapler - Medium";
-      
-      // Try to extract quantity
-      const quantityMatch = emailBody.match(/(\d+)\s*(staplers?|pcs?|pieces?)/i);
-      quantity = quantityMatch ? parseInt(quantityMatch[1]) : 10; // Default to 10 if not found
-    }
-    
-    if (product && quantity > 0) {
-      return {
-        title: "Quote Generated and Sent",
-        description: `Automatically quoted ${quantity} units of ${product} to ${email.from}`
-      };
-    } else {
+    if (parsedInfo.confidence === 'none' || !parsedInfo.product || !parsedInfo.quantity) {
+      // If we couldn't extract info with confidence, route to manual processing
       return {
         title: "Manual Processing Required",
         description: "Could not automatically extract product and quantity information."
       };
     }
+    
+    // Calculate price based on parsed product and quantity
+    const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
+    
+    if (!pricing) {
+      // If no valid price found, route to manual processing
+      return {
+        title: "Manual Pricing Required",
+        description: `Found ${parsedInfo.product} × ${parsedInfo.quantity} but couldn't determine pricing.`
+      };
+    }
+    
+    // Generate email subject and body from template
+    const emailSubject = generateEmailSubject(defaultQuoteTemplate, parsedInfo.product);
+    const emailBody = generateQuoteEmailBody(
+      defaultQuoteTemplate,
+      parsedInfo,
+      pricing.pricePerUnit,
+      pricing.totalPrice
+    );
+    
+    // Send the quote email
+    const emailSent = await sendQuoteEmail(
+      parsedInfo.emailAddress,
+      emailSubject,
+      emailBody,
+      email.id
+    ).catch(() => false);
+    
+    // Log quote to sheet
+    const quoteData = {
+      timestamp: new Date().toISOString(),
+      customerName: parsedInfo.customerName,
+      emailAddress: parsedInfo.emailAddress,
+      product: parsedInfo.product,
+      quantity: parsedInfo.quantity,
+      pricePerUnit: pricing.pricePerUnit,
+      totalAmount: pricing.totalPrice,
+      status: emailSent ? 'Sent' : 'Failed'
+    };
+    
+    await logQuoteToSheet(quoteData).catch(console.error);
+    
+    if (emailSent) {
+      return {
+        title: "Quote Generated and Sent",
+        description: `Automatically quoted ${parsedInfo.quantity} units of ${parsedInfo.product} to ${parsedInfo.customerName}`
+      };
+    } else {
+      return {
+        title: "Quote Generated But Not Sent",
+        description: "Email could not be sent. Check your Gmail connection."
+      };
+    }
   };
   
-  const processEmailManually = (email: EmailMessage) => {
+  const processEmailManually = async (email: EmailMessage) => {
+    // Parse the email to pre-populate the manual form
+    const parsedInfo = parseEmailForQuotation(email);
+    
+    // In a real implementation, this would save the email to a queue for manual processing
+    // or redirect to a manual processing page
+    
     return {
       title: "Email Queued for Manual Processing",
       description: `Email from ${email.from} has been added to the manual processing queue.`
@@ -203,6 +255,20 @@ export function EmailInbox() {
                     )}
                   </Button>
                 </div>
+                
+                {/* Show confidence indicator for parsed data */}
+                {processingEmailId !== email.id && (
+                  <div className="pt-2 text-xs">
+                    <div className="flex items-center">
+                      <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
+                      <span className="text-muted-foreground">
+                        AI Detection: {parseEmailForQuotation(email).confidence !== 'none' ? 
+                          `${parseEmailForQuotation(email).product} × ${parseEmailForQuotation(email).quantity}` : 
+                          "No product detected"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           ) : (
