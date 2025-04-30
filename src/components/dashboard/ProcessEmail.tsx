@@ -8,11 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { mockProducts } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
-import { Send, Printer, Download } from "lucide-react";
+import { Send, Printer, Download, Wand2 } from "lucide-react";
 import { parseEmailForQuotation } from "@/services/emailParserService";
 import { sendQuoteEmail } from "@/services/gmailService";
 import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
 import { logQuoteToSheet } from "@/services/gmailService";
+import { calculatePrice } from "@/services/pricingService";
 
 export function ProcessEmail() {
   const { toast } = useToast();
@@ -26,6 +27,7 @@ export function ProcessEmail() {
   });
 
   const [quoteGenerated, setQuoteGenerated] = useState(false);
+  const [autoAnalysisActive, setAutoAnalysisActive] = useState(false);
 
   const handleQuantityChange = (newQuantity: number) => {
     // Find the appropriate price based on quantity
@@ -174,6 +176,74 @@ Date,${new Date().toLocaleDateString()}
     });
   };
 
+  const handleAutoAnalyzeEmail = () => {
+    setAutoAnalysisActive(true);
+    
+    // Simulate processing delay
+    setTimeout(() => {
+      try {
+        // Parse the email using our NLP service
+        const mockEmail = {
+          id: "manual-analysis",
+          from: emailData.from,
+          subject: emailData.subject,
+          body: emailData.body,
+          date: new Date().toISOString()
+        };
+        
+        const parsedInfo = parseEmailForQuotation(mockEmail);
+        
+        if (parsedInfo.confidence === 'none' || !parsedInfo.product || !parsedInfo.quantity) {
+          toast({
+            title: "Analysis Failed",
+            description: "Could not automatically detect product and quantity. Please fill in manually.",
+            variant: "destructive"
+          });
+          setAutoAnalysisActive(false);
+          return;
+        }
+        
+        // Calculate price
+        const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
+        
+        if (!pricing) {
+          toast({
+            title: "Pricing Failed",
+            description: `Detected ${parsedInfo.product} × ${parsedInfo.quantity} but couldn't determine pricing.`,
+            variant: "destructive"
+          });
+          setAutoAnalysisActive(false);
+          return;
+        }
+        
+        // Update form with detected values
+        setEmailData({
+          ...emailData,
+          productName: parsedInfo.product,
+          quantity: parsedInfo.quantity,
+          calculatedPrice: pricing.totalPrice
+        });
+        
+        toast({
+          title: "Auto-Analysis Complete",
+          description: `Detected ${parsedInfo.product} × ${parsedInfo.quantity} with ${parsedInfo.confidence} confidence.`,
+        });
+        
+        // Generate the quote
+        setQuoteGenerated(true);
+      } catch (error) {
+        console.error("Error in auto analysis:", error);
+        toast({
+          title: "Analysis Error",
+          description: "An unexpected error occurred during email analysis.",
+          variant: "destructive"
+        });
+      } finally {
+        setAutoAnalysisActive(false);
+      }
+    }, 1500);
+  };
+
   return (
     <Card className="col-span-2">
       <CardHeader>
@@ -204,7 +274,20 @@ Date,${new Date().toLocaleDateString()}
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="body">Email Body</Label>
+            <div className="flex justify-between items-center">
+              <Label htmlFor="body">Email Body</Label>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                className="flex items-center gap-1"
+                onClick={handleAutoAnalyzeEmail}
+                disabled={autoAnalysisActive}
+              >
+                <Wand2 className="h-3 w-3" /> 
+                {autoAnalysisActive ? "Analyzing..." : "Auto-Analyze"}
+              </Button>
+            </div>
             <Textarea
               id="body"
               rows={4}

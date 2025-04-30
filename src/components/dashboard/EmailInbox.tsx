@@ -3,20 +3,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
-import { useState } from "react";
-import { AlertCircle, FileText, RefreshCw, Send } from "lucide-react";
-import { EmailMessage, QuoteLog } from "@/types";
+import { useState, useEffect } from "react";
+import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
+import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
-import { fetchUnreadEmails, logQuoteToSheet, markEmailAsRead, sendQuoteEmail } from "@/services/gmailService";
+import { 
+  fetchUnreadEmails, 
+  logQuoteToSheet, 
+  markEmailAsRead, 
+  sendQuoteEmail, 
+  setupAutoEmailProcessing,
+  autoProcessEmails
+} from "@/services/gmailService";
 import { parseEmailForQuotation } from "@/services/emailParserService";
 import { calculatePrice } from "@/services/pricingService";
 import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
 import { mockProducts } from "@/data/mockData";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
+  const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
   
   // Fetch emails using React Query
   const { data: emails, isLoading, isError, refetch } = useQuery({
@@ -38,6 +48,44 @@ export function EmailInbox() {
       }
     }
   });
+
+  // Setup email auto-processing
+  useEffect(() => {
+    const emailProcessor = setupAutoEmailProcessing(async (newEmails) => {
+      if (autoProcessEnabled && newEmails.length > 0) {
+        toast({
+          title: "Auto-Processing Emails",
+          description: `Processing ${newEmails.length} new emails automatically.`
+        });
+        
+        await autoProcessEmails(newEmails, (email, success, autoProcessed) => {
+          // Add to processed list regardless of success
+          setProcessedEmails(prev => [...prev, email.id]);
+          
+          // Show notification only for successful auto-processing
+          if (success) {
+            const parsedInfo = parseEmailForQuotation(email);
+            toast({
+              title: "Quote Auto-Generated",
+              description: `Automatically sent quote to ${parsedInfo.customerName} for ${parsedInfo.product}`
+            });
+          }
+        });
+        
+        // Refresh the email list
+        refetch();
+      }
+    }, 60000); // Check every minute
+    
+    // Start auto-processing if enabled
+    if (autoProcessEnabled) {
+      emailProcessor.start();
+    }
+    
+    return () => {
+      emailProcessor.stop();
+    };
+  }, [autoProcessEnabled, refetch, toast]);
 
   const handleProcessEmail = async (email: EmailMessage, isAutomatic: boolean = false) => {
     setProcessingEmailId(email.id);
@@ -174,14 +222,36 @@ export function EmailInbox() {
             Recent unprocessed emails requiring quotation
           </CardDescription>
         </div>
-        <Button 
-          variant="outline" 
-          size="icon" 
-          onClick={() => refetch()} 
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="auto-process"
+              checked={autoProcessEnabled}
+              onCheckedChange={setAutoProcessEnabled}
+            />
+            <Label htmlFor="auto-process" className="text-sm">
+              {autoProcessEnabled ? (
+                <span className="flex items-center text-green-600">
+                  <ToggleRight className="h-4 w-4 mr-1" />
+                  Auto-processing ON
+                </span>
+              ) : (
+                <span className="flex items-center text-muted-foreground">
+                  <ToggleLeft className="h-4 w-4 mr-1" />
+                  Auto-processing OFF
+                </span>
+              )}
+            </Label>
+          </div>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={() => refetch()} 
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
