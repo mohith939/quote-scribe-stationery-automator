@@ -27,6 +27,7 @@ export interface EmailMessage {
   subject: string;
   body: string;
   date: string;
+  category?: 'quotation' | 'other';
 }
 
 export interface ImportResult {

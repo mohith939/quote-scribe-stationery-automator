@@ -1,10 +1,9 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertCircle, FileText, ListCheck, Mail, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 import { 
@@ -21,12 +20,14 @@ import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } fr
 import { mockProducts } from "@/data/mockData";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'quotation' | 'other'>('all');
   
   // Fetch emails using React Query
   const { data: emails, isLoading, isError, refetch } = useQuery({
@@ -210,8 +211,10 @@ export function EmailInbox() {
     };
   };
 
-  // Filter out processed emails
-  const displayEmails = (emails || []).filter(email => !processedEmails.includes(email.id));
+  // Filter emails based on category and processed status
+  const displayEmails = (emails || [])
+    .filter(email => !processedEmails.includes(email.id))
+    .filter(email => categoryFilter === 'all' || email.category === categoryFilter);
 
   return (
     <Card>
@@ -223,6 +226,34 @@ export function EmailInbox() {
           </CardDescription>
         </div>
         <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 mr-4">
+            <Button 
+              variant={categoryFilter === 'all' ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setCategoryFilter('all')}
+              className="text-xs"
+            >
+              All
+            </Button>
+            <Button 
+              variant={categoryFilter === 'quotation' ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setCategoryFilter('quotation')}
+              className="text-xs"
+            >
+              <ListCheck className="h-3 w-3 mr-1" />
+              Quotations
+            </Button>
+            <Button 
+              variant={categoryFilter === 'other' ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setCategoryFilter('other')}
+              className="text-xs"
+            >
+              <Mail className="h-3 w-3 mr-1" />
+              Other
+            </Button>
+          </div>
           <div className="flex items-center space-x-2">
             <Switch
               id="auto-process"
@@ -281,8 +312,13 @@ export function EmailInbox() {
               >
                 <div className="flex justify-between items-center">
                   <div className="font-medium">{email.from}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {new Date(email.date).toLocaleString()}
+                  <div className="flex items-center space-x-2">
+                    <Badge variant={email.category === 'quotation' ? 'default' : 'secondary'}>
+                      {email.category === 'quotation' ? 'Quotation' : 'Other'}
+                    </Badge>
+                    <div className="text-sm text-muted-foreground">
+                      {new Date(email.date).toLocaleString()}
+                    </div>
                   </div>
                 </div>
                 <div className="text-sm font-medium">{email.subject}</div>
@@ -311,7 +347,7 @@ export function EmailInbox() {
                   <Button 
                     size="sm" 
                     onClick={() => handleProcessEmail(email, true)}
-                    disabled={processingEmailId === email.id}
+                    disabled={processingEmailId === email.id || email.category !== 'quotation'}
                   >
                     {processingEmailId === email.id ? (
                       <span className="flex items-center">
@@ -328,7 +364,7 @@ export function EmailInbox() {
                 </div>
                 
                 {/* Show confidence indicator for parsed data */}
-                {processingEmailId !== email.id && (
+                {processingEmailId !== email.id && email.category === 'quotation' && (
                   <div className="pt-2 text-xs">
                     <div className="flex items-center">
                       <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
@@ -344,7 +380,9 @@ export function EmailInbox() {
             ))
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              No unprocessed emails found
+              {categoryFilter !== 'all' 
+                ? `No ${categoryFilter} emails found`
+                : "No unprocessed emails found"}
             </div>
           )}
         </div>
