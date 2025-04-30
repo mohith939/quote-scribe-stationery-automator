@@ -1,5 +1,6 @@
-import { EmailMessage } from "@/types";
+import { EmailMessage, GoogleSheetsConfig } from "@/types";
 import { categorizeEmail } from "./emailParserService";
+import { getGoogleSheetsConfig } from "./googleSheetsService";
 
 // Base URL of our deployed Google Apps Script web app
 // This would be replaced with your actual deployed script URL
@@ -103,7 +104,7 @@ export const sendQuoteEmail = async (
   }
 }
 
-// Log quote information to Google Sheets (Phase 6)
+// Log quote information to Google Sheets
 export const logQuoteToSheet = async (quoteData: {
   timestamp: string;
   customerName: string;
@@ -115,6 +116,14 @@ export const logQuoteToSheet = async (quoteData: {
   status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
 }): Promise<boolean> => {
   try {
+    // Get Google Sheets configuration
+    const sheetsConfig: GoogleSheetsConfig = getGoogleSheetsConfig();
+    
+    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId) {
+      console.log("Google Sheets not connected, skipping log");
+      return true; // Return true to not block the flow
+    }
+    
     const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
       method: 'POST',
       headers: {
@@ -122,6 +131,8 @@ export const logQuoteToSheet = async (quoteData: {
       },
       body: JSON.stringify({
         action: 'logQuote',
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        sheetName: sheetsConfig.quotesSheetName,
         quoteData
       })
     });
