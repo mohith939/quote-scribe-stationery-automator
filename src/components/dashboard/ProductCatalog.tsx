@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -5,14 +6,16 @@ import { mockProducts } from "@/data/mockData";
 import { useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { ImportResult, Product } from "@/types";
-import { File, Upload } from "lucide-react";
+import { File, Upload, FileSpreadsheet, IndianRupee, InfoIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function ProductCatalog() {
   const [isEditing, setIsEditing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showFormatInfo, setShowFormatInfo] = useState(false);
   const [importData, setImportData] = useState("");
   const [products, setProducts] = useState(mockProducts);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -190,17 +193,25 @@ export function ProductCatalog() {
             <Button 
               variant="outline" 
               size="sm"
+              onClick={() => setShowFormatInfo(true)}
+            >
+              <InfoIcon className="mr-2 h-4 w-4" />
+              Import Format
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
               onClick={handleFileUploadClick}
               disabled={isImporting}
             >
               {isImporting ? (
                 <span className="flex items-center">
-                  <File className="mr-2 h-4 w-4 animate-pulse" />
+                  <FileSpreadsheet className="mr-2 h-4 w-4 animate-pulse" />
                   Importing...
                 </span>
               ) : (
                 <span className="flex items-center">
-                  <File className="mr-2 h-4 w-4" />
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
                   Import from Excel
                 </span>
               )}
@@ -273,7 +284,7 @@ export function ProductCatalog() {
                       <TableCell className="text-right">
                         {isEditing ? (
                           <div className="flex items-center justify-end">
-                            <span className="mr-1">$</span>
+                            <IndianRupee className="h-4 w-4 mr-1" />
                             <input
                               type="number"
                               defaultValue={product.pricePerUnit}
@@ -282,7 +293,10 @@ export function ProductCatalog() {
                             />
                           </div>
                         ) : (
-                          `$${product.pricePerUnit.toFixed(2)}`
+                          <span className="flex items-center justify-end">
+                            <IndianRupee className="h-4 w-4 mr-1" />
+                            {product.pricePerUnit.toFixed(2)}
+                          </span>
                         )}
                       </TableCell>
                       {isEditing && (
@@ -345,6 +359,49 @@ export function ProductCatalog() {
             <Button onClick={handleManualImport}>
               <Upload className="mr-2 h-4 w-4" />
               Import Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showFormatInfo} onOpenChange={setShowFormatInfo}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excel/CSV Import Format</DialogTitle>
+            <DialogDescription>
+              Your import file should follow this format for successful processing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Alert>
+              <AlertTitle className="flex items-center">
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> 
+                Required Format
+              </AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">Your Excel/CSV file must include these columns (column headers are required):</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><strong>Product Name</strong> - The full name of the product</li>
+                  <li><strong>Min Quantity</strong> - Minimum quantity for this price slab</li>
+                  <li><strong>Max Quantity</strong> - Maximum quantity for this price slab</li>
+                  <li><strong>Price</strong> - Price per unit in ₹</li>
+                </ul>
+                <div className="mt-4">
+                  <p className="font-semibold">Example CSV Format:</p>
+                  <pre className="bg-gray-100 p-2 rounded text-xs mt-2 overflow-x-auto">
+                    Product Name,Min Quantity,Max Quantity,Price{"\n"}
+                    A4 Paper 80gsm,1,100,0.40{"\n"}
+                    A4 Paper 80gsm,101,500,0.35{"\n"}
+                    Premium Notebook,1,10,75.00{"\n"}
+                    Premium Notebook,11,50,65.00
+                  </pre>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowFormatInfo(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
