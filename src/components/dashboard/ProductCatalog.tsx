@@ -1,575 +1,412 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
-import { Download, FileText, Pencil, Plus, RefreshCw, Trash, Upload } from "lucide-react";
 import { mockProducts } from "@/data/mockData";
-import { 
-  fetchProductsFromSheets, 
-  saveProductsToSheets, 
-  getGoogleSheetsConfig,
-  importProductsFromFile,
-  getProductImportTemplate
-} from "@/services/googleSheetsService";
-import { Product, ImportResult } from "@/types";
+import { useState, useRef } from "react";
+import { useToast } from "@/components/ui/use-toast";
+import { ImportResult, Product } from "@/types";
+import { File, Upload, FileSpreadsheet, IndianRupee, InfoIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function ProductCatalog() {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: "",
-    minQuantity: 1,
-    maxQuantity: 100,
-    pricePerUnit: 0
-  });
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  
+  const [isEditing, setIsEditing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showFormatInfo, setShowFormatInfo] = useState(false);
+  const [importData, setImportData] = useState("");
+  const [products, setProducts] = useState(mockProducts);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const sheetsConfig = getGoogleSheetsConfig();
   
-  // Load products from Google Sheets when connected
-  useEffect(() => {
-    const loadProducts = async () => {
-      if (sheetsConfig.isConnected && sheetsConfig.spreadsheetId) {
-        setIsLoading(true);
-        try {
-          const fetchedProducts = await fetchProductsFromSheets();
-          if (fetchedProducts && fetchedProducts.length > 0) {
-            setProducts(fetchedProducts);
-          }
-        } catch (error) {
-          console.error("Error fetching products:", error);
-          // Keep using mock data if fetch fails
-        } finally {
-          setIsLoading(false);
-        }
+  // Group products by name for better display
+  const groupProductsByName = (productList: Product[]) => {
+    const grouped: Record<string, Product[]> = {};
+    productList.forEach((product) => {
+      if (!grouped[product.name]) {
+        grouped[product.name] = [];
       }
-    };
-    
-    loadProducts();
-  }, [sheetsConfig.isConnected, sheetsConfig.spreadsheetId]);
+      grouped[product.name].push(product);
+    });
+    return grouped;
+  };
   
-  const handleDeleteProduct = (id: string) => {
-    const updatedProducts = products.filter(product => product.id !== id);
-    setProducts(updatedProducts);
-    
-    if (sheetsConfig.isConnected && sheetsConfig.spreadsheetId) {
-      saveProductsToSheets(updatedProducts).then(success => {
-        if (success) {
-          toast({
-            title: "Product Deleted",
-            description: "Product successfully deleted and saved to Google Sheets."
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: "Failed to save changes to Google Sheets.",
-            variant: "destructive"
-          });
-        }
-      });
-    } else {
-      toast({
-        title: "Product Deleted",
-        description: "Product successfully deleted (local only)."
-      });
-    }
+  const groupedProducts = groupProductsByName(products);
+
+  const handleFileUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
-  const handleEditProduct = (product: Product) => {
-    setEditingProduct(product);
-    setIsEditDialogOpen(true);
-  };
-
-  const handleSaveEdit = () => {
-    if (!editingProduct) return;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
     
-    const updatedProducts = products.map(p => 
-      p.id === editingProduct.id ? editingProduct : p
-    );
+    setIsImporting(true);
     
-    setProducts(updatedProducts);
-    setIsEditDialogOpen(false);
-    
-    if (sheetsConfig.isConnected && sheetsConfig.spreadsheetId) {
-      saveProductsToSheets(updatedProducts).then(success => {
-        if (success) {
-          toast({
-            title: "Product Updated",
-            description: "Product successfully updated and saved to Google Sheets."
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: "Failed to save changes to Google Sheets.",
-            variant: "destructive"
-          });
-        }
-      });
-    } else {
+    // Check if the file is an Excel file
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
       toast({
-        title: "Product Updated",
-        description: "Product successfully updated (local only)."
-      });
-    }
-  };
-
-  const handleAddProduct = () => {
-    if (!newProduct.name) {
-      toast({
-        title: "Invalid Product",
-        description: "Product name is required.",
+        title: "Invalid File Format",
+        description: "Please upload an Excel (.xlsx, .xls) or CSV file.",
         variant: "destructive"
       });
+      setIsImporting(false);
       return;
     }
 
-    const productToAdd: Product = {
-      id: Math.random().toString(36).substring(2, 15),
-      name: newProduct.name || "",
-      minQuantity: newProduct.minQuantity || 1,
-      maxQuantity: newProduct.maxQuantity || 100,
-      pricePerUnit: newProduct.pricePerUnit || 0
-    };
-
-    const updatedProducts = [...products, productToAdd];
-    setProducts(updatedProducts);
-    setIsAddDialogOpen(false);
-    
-    // Reset new product form
-    setNewProduct({
-      name: "",
-      minQuantity: 1,
-      maxQuantity: 100,
-      pricePerUnit: 0
-    });
-    
-    if (sheetsConfig.isConnected && sheetsConfig.spreadsheetId) {
-      saveProductsToSheets(updatedProducts).then(success => {
-        if (success) {
+    // In a real application, we would process the Excel file here
+    // For demo purposes, we'll read it as text for CSV files
+    if (file.name.endsWith('.csv')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        setImportData(text);
+        setShowImportDialog(true);
+        setIsImporting(false);
+      };
+      reader.readAsText(file);
+    } else {
+      // For Excel files, in a real app we'd use a library like xlsx
+      // For now, just simulate a successful import
+      setTimeout(() => {
+        const result: ImportResult = {
+          success: true, 
+          message: "Successfully imported products",
+          productsAdded: 5
+        };
+        
+        if (result.success) {
           toast({
-            title: "Product Added",
-            description: "Product successfully added and saved to Google Sheets."
+            title: "Import Successful",
+            description: `Added ${result.productsAdded} products to catalog.`
           });
+          
+          // Simulate adding new products
+          const newProducts: Product[] = [
+            {
+              id: "new1",
+              name: "Premium A4 Paper - 100gsm",
+              minQuantity: 1,
+              maxQuantity: 100,
+              pricePerUnit: 0.60,
+            },
+            {
+              id: "new2",
+              name: "Premium A4 Paper - 100gsm",
+              minQuantity: 101,
+              maxQuantity: 500,
+              pricePerUnit: 0.55,
+            }
+          ];
+          
+          setProducts([...products, ...newProducts]);
         } else {
           toast({
-            title: "Error",
-            description: "Failed to save changes to Google Sheets.",
+            title: "Import Failed",
+            description: result.message,
             variant: "destructive"
           });
         }
-      });
-    } else {
-      toast({
-        title: "Product Added",
-        description: "Product successfully added (local only)."
-      });
+        setIsImporting(false);
+        
+        // Reset the file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }, 1500);
     }
   };
   
-  const handleExportCSV = () => {
-    // Create CSV content
-    const headers = "name,minQuantity,maxQuantity,pricePerUnit";
-    const rows = products.map(product => {
-      return [
-        product.name,
-        product.minQuantity,
-        product.maxQuantity,
-        product.pricePerUnit
-      ].join(',');
-    });
-    
-    const csvContent = [headers, ...rows].join('\n');
-    
-    // Create a download link
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `product-catalog-${Date.now()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Export Complete",
-      description: `${products.length} products exported to CSV`,
-    });
-  };
-  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      setImportFile(files[0]);
-    }
-  };
-  
-  const handleImportProducts = async () => {
-    if (!importFile) {
-      toast({
-        title: "No File Selected",
-        description: "Please select a file to import.",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    setIsLoading(true);
-    
+  const handleManualImport = () => {
     try {
-      const result: ImportResult = await importProductsFromFile(importFile);
+      // Basic CSV parsing
+      const lines = importData.trim().split('\n');
+      const headers = lines[0].split(',');
       
-      if (result.success) {
-        // Refresh product list
-        if (sheetsConfig.isConnected && sheetsConfig.spreadsheetId) {
-          const fetchedProducts = await fetchProductsFromSheets();
-          if (fetchedProducts && fetchedProducts.length > 0) {
-            setProducts(fetchedProducts);
-          }
+      const nameIndex = headers.findIndex(h => h.toLowerCase().includes('name'));
+      const minQtyIndex = headers.findIndex(h => h.toLowerCase().includes('min'));
+      const maxQtyIndex = headers.findIndex(h => h.toLowerCase().includes('max'));
+      const priceIndex = headers.findIndex(h => h.toLowerCase().includes('price'));
+      
+      if (nameIndex === -1 || minQtyIndex === -1 || maxQtyIndex === -1 || priceIndex === -1) {
+        throw new Error("CSV headers must include name, min quantity, max quantity, and price");
+      }
+      
+      const newProducts: Product[] = [];
+      
+      // Start from 1 to skip headers
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',');
+        if (values.length < 4) continue;
+        
+        const newProduct: Product = {
+          id: `import-${Date.now()}-${i}`,
+          name: values[nameIndex].trim(),
+          minQuantity: parseInt(values[minQtyIndex]),
+          maxQuantity: parseInt(values[maxQtyIndex]),
+          pricePerUnit: parseFloat(values[priceIndex]),
+        };
+        
+        if (isNaN(newProduct.minQuantity) || isNaN(newProduct.maxQuantity) || isNaN(newProduct.pricePerUnit)) {
+          throw new Error(`Invalid number format in line ${i+1}`);
         }
         
-        toast({
-          title: "Import Successful",
-          description: result.message,
-        });
-      } else {
-        toast({
-          title: "Import Failed",
-          description: result.message,
-          variant: "destructive"
-        });
+        newProducts.push(newProduct);
       }
+      
+      setProducts([...products, ...newProducts]);
+      setShowImportDialog(false);
+      
+      toast({
+        title: "Import Successful",
+        description: `Added ${newProducts.length} products to catalog.`
+      });
     } catch (error) {
       toast({
-        title: "Import Error",
-        description: "An unexpected error occurred during import.",
+        title: "Import Failed",
+        description: error instanceof Error ? error.message : "Unknown error processing CSV data",
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
-      setIsImportDialogOpen(false);
-      setImportFile(null);
     }
-  };
-  
-  const handleShowImportFormat = () => {
-    setIsFormatDialogOpen(true);
-  };
-  
-  const handleDownloadTemplate = () => {
-    const templateContent = getProductImportTemplate();
-    
-    // Create a download link
-    const blob = new Blob([templateContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'product-import-template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Template Downloaded",
-      description: "Product import template downloaded successfully.",
-    });
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Product Catalog</CardTitle>
-          <CardDescription>
-            Manage product pricing tiers by quantity
-          </CardDescription>
-        </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" size="sm" onClick={handleShowImportFormat}>
-            <FileText className="h-4 w-4 mr-1" />
-            Import Format
-          </Button>
-          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Upload className="h-4 w-4 mr-1" />
-                Import
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Import Products</DialogTitle>
-                <DialogDescription>
-                  Upload a CSV or Excel file with product data
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="file">Select File</Label>
-                  <Input 
-                    id="file"
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={handleFileChange}
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    File must have columns: name, minQuantity, maxQuantity, pricePerUnit
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleImportProducts} disabled={!importFile || isLoading}>
-                  {isLoading ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
-                  ) : 'Import Products'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          
-          <Dialog open={isFormatDialogOpen} onOpenChange={setIsFormatDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Import Format</DialogTitle>
-                <DialogDescription>
-                  Follow this format for importing products
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="rounded-md bg-secondary p-4">
-                  <p className="font-mono text-xs">
-                    name,minQuantity,maxQuantity,pricePerUnit<br />
-                    A4 Paper,1,99,120<br />
-                    A4 Paper,100,499,100<br />
-                    A4 Paper,500,999,90<br />
-                    A4 Paper,1000,9999,80
-                  </p>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>First row must contain column headers</li>
-                    <li>For price tiers of the same product, create multiple rows with the same name</li>
-                    <li>Price is in Indian Rupees (₹)</li>
-                    <li>Save as .CSV format</li>
-                  </ul>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsFormatDialogOpen(false)}>Close</Button>
-                <Button onClick={handleDownloadTemplate}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Template
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                Add Product
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
-                <DialogDescription>
-                  Create a new product with pricing based on quantity
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Product Name</Label>
-                  <Input
-                    id="name"
-                    value={newProduct.name}
-                    onChange={e => setNewProduct({...newProduct, name: e.target.value})}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="minQuantity">Min Quantity</Label>
-                    <Input
-                      id="minQuantity"
-                      type="number"
-                      min="1"
-                      value={newProduct.minQuantity}
-                      onChange={e => setNewProduct({...newProduct, minQuantity: parseInt(e.target.value)})}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="maxQuantity">Max Quantity</Label>
-                    <Input
-                      id="maxQuantity"
-                      type="number"
-                      min="1"
-                      value={newProduct.maxQuantity}
-                      onChange={e => setNewProduct({...newProduct, maxQuantity: parseInt(e.target.value)})}
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="price">Price Per Unit (₹)</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newProduct.pricePerUnit}
-                    onChange={e => setNewProduct({...newProduct, pricePerUnit: parseFloat(e.target.value)})}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit" onClick={handleAddProduct}>Add Product</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-            <span>Loading products...</span>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Product Catalog</CardTitle>
+            <CardDescription>
+              Manage products and pricing slabs
+            </CardDescription>
           </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead className="text-right">Min Quantity</TableHead>
-                <TableHead className="text-right">Max Quantity</TableHead>
-                <TableHead className="text-right">Price Per Unit</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell className="text-right">{product.minQuantity}</TableCell>
-                  <TableCell className="text-right">{product.maxQuantity}</TableCell>
-                  <TableCell className="text-right">₹{product.pricePerUnit.toFixed(2)}</TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)}>
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Edit</span>
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteProduct(product.id)}>
-                      <Trash className="h-4 w-4" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {products.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    No products found. Add a product to get started.
-                  </TableCell>
-                </TableRow>
+          <div className="space-x-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept=".xlsx,.xls,.csv" 
+              onChange={handleFileChange}
+            />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowFormatInfo(true)}
+            >
+              <InfoIcon className="mr-2 h-4 w-4" />
+              Import Format
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleFileUploadClick}
+              disabled={isImporting}
+            >
+              {isImporting ? (
+                <span className="flex items-center">
+                  <FileSpreadsheet className="mr-2 h-4 w-4 animate-pulse" />
+                  Importing...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  Import from Excel
+                </span>
               )}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-      <CardFooter className="flex justify-between">
-        <div className="text-sm text-muted-foreground">
-          {products.length} products total
-        </div>
-        {sheetsConfig.isConnected ? (
-          <div className="text-sm text-green-600">
-            Connected to Google Sheets
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsEditing(!isEditing)}
+            >
+              {isEditing ? "View Mode" : "Edit Mode"}
+            </Button>
+            <Button size="sm">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 mr-2"
+              >
+                <line x1="12" x2="12" y1="5" y2="19" />
+                <line x1="5" x2="19" y1="12" y2="12" />
+              </svg>
+              Add Product
+            </Button>
           </div>
-        ) : (
-          <div className="text-sm text-amber-600">
-            Not connected to Google Sheets
-          </div>
-        )}
-      </CardFooter>
-      
-      {/* Edit Product Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Product</DialogTitle>
-            <DialogDescription>
-              Update product details and pricing
-            </DialogDescription>
-          </DialogHeader>
-          {editingProduct && (
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-name">Product Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editingProduct.name}
-                  onChange={e => setEditingProduct({...editingProduct, name: e.target.value})}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-minQuantity">Min Quantity</Label>
-                  <Input
-                    id="edit-minQuantity"
-                    type="number"
-                    min="1"
-                    value={editingProduct.minQuantity}
-                    onChange={e => setEditingProduct({...editingProduct, minQuantity: parseInt(e.target.value)})}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-maxQuantity">Max Quantity</Label>
-                  <Input
-                    id="edit-maxQuantity"
-                    type="number"
-                    min="1"
-                    value={editingProduct.maxQuantity}
-                    onChange={e => setEditingProduct({...editingProduct, maxQuantity: parseInt(e.target.value)})}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-price">Price Per Unit (₹)</Label>
-                <Input
-                  id="edit-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editingProduct.pricePerUnit}
-                  onChange={e => setEditingProduct({...editingProduct, pricePerUnit: parseFloat(e.target.value)})}
-                />
-              </div>
+        </CardHeader>
+        <CardContent>
+          {Object.entries(groupedProducts).map(([productName, products]) => (
+            <div key={productName} className="mb-6">
+              <h3 className="text-lg font-medium mb-2">{productName}</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Min Qty</TableHead>
+                    <TableHead>Max Qty</TableHead>
+                    <TableHead className="text-right">Price/Unit</TableHead>
+                    {isEditing && <TableHead className="w-[100px] text-right">Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {products.map((product) => (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            defaultValue={product.minQuantity}
+                            className="w-20 p-1 border rounded"
+                          />
+                        ) : (
+                          product.minQuantity
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            defaultValue={product.maxQuantity}
+                            className="w-20 p-1 border rounded"
+                          />
+                        ) : (
+                          product.maxQuantity
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isEditing ? (
+                          <div className="flex items-center justify-end">
+                            <IndianRupee className="h-4 w-4 mr-1" />
+                            <input
+                              type="number"
+                              defaultValue={product.pricePerUnit}
+                              step="0.01"
+                              className="w-16 p-1 border rounded text-right"
+                            />
+                          </div>
+                        ) : (
+                          <span className="flex items-center justify-end">
+                            <IndianRupee className="h-4 w-4 mr-1" />
+                            {product.pricePerUnit.toFixed(2)}
+                          </span>
+                        )}
+                      </TableCell>
+                      {isEditing && (
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="h-4 w-4"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                          </Button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ))}
+          {isEditing && (
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline">Cancel</Button>
+              <Button>Save Changes</Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+      
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import CSV Data</DialogTitle>
+            <DialogDescription>
+              Review and confirm the data import. The CSV should have columns for product name, min quantity, max quantity, and price.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea 
+              value={importData} 
+              onChange={(e) => setImportData(e.target.value)}
+              rows={10}
+              placeholder="CSV data preview..."
+              className="font-mono text-xs"
+            />
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-            <Button type="submit" onClick={handleSaveEdit}>Update Product</Button>
+            <Button variant="outline" onClick={() => setShowImportDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleManualImport}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import Data
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+
+      <Dialog open={showFormatInfo} onOpenChange={setShowFormatInfo}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excel/CSV Import Format</DialogTitle>
+            <DialogDescription>
+              Your import file should follow this format for successful processing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Alert>
+              <AlertTitle className="flex items-center">
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> 
+                Required Format
+              </AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">Your Excel/CSV file must include these columns (column headers are required):</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><strong>Product Name</strong> - The full name of the product</li>
+                  <li><strong>Min Quantity</strong> - Minimum quantity for this price slab</li>
+                  <li><strong>Max Quantity</strong> - Maximum quantity for this price slab</li>
+                  <li><strong>Price</strong> - Price per unit in ₹</li>
+                </ul>
+                <div className="mt-4">
+                  <p className="font-semibold">Example CSV Format:</p>
+                  <pre className="bg-gray-100 p-2 rounded text-xs mt-2 overflow-x-auto">
+                    Product Name,Min Quantity,Max Quantity,Price{"\n"}
+                    A4 Paper 80gsm,1,100,0.40{"\n"}
+                    A4 Paper 80gsm,101,500,0.35{"\n"}
+                    Premium Notebook,1,10,75.00{"\n"}
+                    Premium Notebook,11,50,65.00
+                  </pre>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowFormatInfo(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

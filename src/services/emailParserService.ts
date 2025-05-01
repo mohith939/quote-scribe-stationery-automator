@@ -1,3 +1,4 @@
+
 import { EmailMessage, Product } from "@/types";
 
 export interface ParsedEmailInfo {
@@ -7,43 +8,7 @@ export interface ParsedEmailInfo {
   quantity?: number;
   originalText: string;
   confidence: 'high' | 'medium' | 'low' | 'none';
-  category: 'quotation' | 'other';
 }
-
-/**
- * Determines if an email is likely a quotation request
- */
-export const categorizeEmail = (email: EmailMessage): 'quotation' | 'other' => {
-  const lowerSubject = email.subject.toLowerCase();
-  const lowerBody = email.body.toLowerCase();
-  
-  // Keywords that suggest a quotation request
-  const quotationKeywords = [
-    'quote', 'quotation', 'price', 'cost', 'rate', 'pricing',
-    'how much', 'estimate', 'enquiry', 'inquiry', 'cost of',
-    'price list', 'rates', 'charge', 'charges'
-  ];
-  
-  // Check if any quotation keywords appear in the subject or body
-  const isQuotationRequest = quotationKeywords.some(keyword => 
-    lowerSubject.includes(keyword) || lowerBody.includes(keyword)
-  );
-  
-  // Additional check: If product names are mentioned along with quantities
-  const productMentioned = [
-    'paper', 'pen', 'pens', 'stapler', 'notebook', 'marker', 'folder',
-    'a4', 'ballpoint', 'whiteboard', 'file folder'
-  ].some(product => lowerBody.includes(product));
-  
-  const quantityMentioned = /(\d+)\s*(sheets?|reams?|papers?|pcs|pieces|units|items|pens?)/i.test(lowerBody);
-  
-  // If both product and quantity are mentioned, it's likely a quotation request
-  if (productMentioned && quantityMentioned) {
-    return 'quotation';
-  }
-  
-  return isQuotationRequest ? 'quotation' : 'other';
-};
 
 /**
  * Extracts a customer name from email address or "From" field
@@ -79,21 +44,14 @@ export const parseEmailForQuotation = (email: EmailMessage): ParsedEmailInfo => 
   const emailBody = email.body.toLowerCase();
   const customerName = extractCustomerName(email.from);
   const emailAddress = extractEmailAddress(email.from);
-  const category = email.category || categorizeEmail(email);
   
   // Initialize with no product/quantity found
   const parsedInfo: ParsedEmailInfo = {
     customerName,
     emailAddress,
     originalText: email.body,
-    confidence: 'none',
-    category
+    confidence: 'none'
   };
-  
-  // Only continue detailed parsing if this is a quotation request
-  if (category !== 'quotation') {
-    return parsedInfo;
-  }
   
   // Structured NLP approach
   

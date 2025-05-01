@@ -1,70 +1,92 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, CheckCircle2, MailWarning } from "lucide-react";
-import { useEffect, useState } from "react";
-import { getEmailProcessingMetrics } from "@/services/gmailService";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function QuickStats() {
-  const [metrics, setMetrics] = useState({
-    totalQuotes: 52,
-    pendingEmails: 3,
-    successRate: 85,
-    avgResponseTime: 2.4
-  });
-
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const fetchedMetrics = await getEmailProcessingMetrics();
-        setMetrics(fetchedMetrics);
-      } catch (error) {
-        console.error("Error fetching metrics:", error);
-        // Optionally, handle the error, e.g., display a message to the user
-      }
-    };
-
-    fetchMetrics();
-  }, []);
-
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">
-            Total Quotes Generated
+            Total Quotes
           </CardTitle>
-          <CheckCircle2 className="h-4 w-4 text-green-500" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <rect width="16" height="20" x="4" y="2" rx="2" />
+            <line x1="8" x2="16" y1="6" y2="6" />
+            <line x1="8" x2="16" y1="10" y2="10" />
+            <line x1="8" x2="12" y1="14" y2="14" />
+          </svg>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{metrics.totalQuotes}</div>
-          <p className="text-sm text-muted-foreground">
-            {metrics.successRate}% increase in conversion
+          <div className="text-2xl font-bold">52</div>
+          <p className="text-xs text-muted-foreground">
+            +12% from last month
           </p>
         </CardContent>
       </Card>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">
-            Pending Email Requests
+            Pending Emails
           </CardTitle>
-          <MailWarning className="h-4 w-4 text-yellow-500" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <path d="M21 8v5a4 4 0 0 1-8 0V8a4 4 0 0 1 8 0Z" />
+            <path d="M11 2v10a4 4 0 0 1-8 0V2" />
+            <path d="M3 8h18" />
+          </svg>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{metrics.pendingEmails}</div>
-          <p className="text-sm text-muted-foreground">
-            <ArrowDown className="h-4 w-4 text-muted-foreground" />
-            {metrics.pendingEmails} less than last month
+          <div className="text-2xl font-bold">3</div>
+          <p className="text-xs text-muted-foreground">
+            Requires processing
           </p>
         </CardContent>
       </Card>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-          <ArrowUp className="h-4 w-4 text-green-500" />
+          <CardTitle className="text-sm font-medium">
+            Quote Success Rate
+          </CardTitle>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+          </svg>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{metrics.successRate}%</div>
-          <p className="text-sm text-muted-foreground">
-            +10% from last month
+          <div className="text-2xl font-bold">85%</div>
+          <p className="text-xs text-muted-foreground">
+            Auto-processing success
           </p>
         </CardContent>
       </Card>
@@ -73,11 +95,26 @@ export function QuickStats() {
           <CardTitle className="text-sm font-medium">
             Avg. Response Time
           </CardTitle>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{metrics.avgResponseTime}m</div>
-          <p className="text-sm text-muted-foreground">
-            +3m from last week
+          <div className="text-2xl font-bold">2.4 hrs</div>
+          <p className="text-xs text-muted-foreground">
+            -30 minutes from last week
           </p>
         </CardContent>
       </Card>
