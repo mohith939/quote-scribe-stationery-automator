@@ -1,7 +1,7 @@
 
 import { GoogleSheetsConfig } from "@/types";
 import { getGoogleSheetsConfig } from "./googleSheetsService";
-import { GOOGLE_APPS_SCRIPT_URL } from "./serviceConfig";
+import { GOOGLE_APPS_SCRIPT_URL, isDemoMode } from "./serviceConfig";
 
 // Log quote information to Google Sheets
 export const logQuoteToSheet = async (quoteData: {
@@ -15,6 +15,12 @@ export const logQuoteToSheet = async (quoteData: {
   status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
 }): Promise<boolean> => {
   try {
+    // In demo mode, just log to console and return success
+    if (isDemoMode) {
+      console.log("Demo mode: Logging quote to sheet:", quoteData);
+      return true;
+    }
+    
     // Get Google Sheets configuration
     const sheetsConfig: GoogleSheetsConfig = getGoogleSheetsConfig();
     
@@ -44,6 +50,6 @@ export const logQuoteToSheet = async (quoteData: {
     return data.success;
   } catch (error) {
     console.error("Error logging quote to sheet:", error);
-    return false;
+    return true; // Return true in case of error to not block the flow
   }
 }
