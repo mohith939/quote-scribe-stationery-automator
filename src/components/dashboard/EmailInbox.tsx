@@ -1,9 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, ListCheck, Mail, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertCircle, FileText, Mail, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 import { 
@@ -33,7 +32,6 @@ export function EmailInbox() {
   const { data: emails, isLoading, isError, refetch } = useQuery({
     queryKey: ['unreadEmails'],
     queryFn: fetchUnreadEmails,
-    placeholderData: mockEmails,
     staleTime: 60000, // 1 minute
     retry: 1,
     meta: {
@@ -226,7 +224,7 @@ export function EmailInbox() {
           </CardDescription>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-2 mr-4">
+          <div className="flex items-center space-x-2 mr-2">
             <Button 
               variant={categoryFilter === 'all' ? "default" : "outline"} 
               size="sm"
@@ -241,7 +239,6 @@ export function EmailInbox() {
               onClick={() => setCategoryFilter('quotation')}
               className="text-xs"
             >
-              <ListCheck className="h-3 w-3 mr-1" />
               Quotations
             </Button>
             <Button 
@@ -250,28 +247,20 @@ export function EmailInbox() {
               onClick={() => setCategoryFilter('other')}
               className="text-xs"
             >
-              <Mail className="h-3 w-3 mr-1" />
               Other
             </Button>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center">
             <Switch
               id="auto-process"
               checked={autoProcessEnabled}
               onCheckedChange={setAutoProcessEnabled}
             />
-            <Label htmlFor="auto-process" className="text-sm">
-              {autoProcessEnabled ? (
-                <span className="flex items-center text-green-600">
-                  <ToggleRight className="h-4 w-4 mr-1" />
-                  Auto-processing ON
-                </span>
-              ) : (
-                <span className="flex items-center text-muted-foreground">
-                  <ToggleLeft className="h-4 w-4 mr-1" />
-                  Auto-processing OFF
-                </span>
-              )}
+            <Label htmlFor="auto-process" className="ml-2 text-sm">
+              {autoProcessEnabled ? 
+                <span className="flex items-center text-green-600">Auto ON</span> : 
+                <span className="flex items-center text-muted-foreground">Auto OFF</span>
+              }
             </Label>
           </div>
           <Button 
@@ -344,23 +333,25 @@ export function EmailInbox() {
                       </span>
                     )}
                   </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={() => handleProcessEmail(email, true)}
-                    disabled={processingEmailId === email.id || email.category !== 'quotation'}
-                  >
-                    {processingEmailId === email.id ? (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4 animate-pulse" />
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4" />
-                        Auto-Generate Quote
-                      </span>
-                    )}
-                  </Button>
+                  {email.category === 'quotation' && (
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleProcessEmail(email, true)}
+                      disabled={processingEmailId === email.id}
+                    >
+                      {processingEmailId === email.id ? (
+                        <span className="flex items-center">
+                          <Send className="mr-2 h-4 w-4 animate-pulse" />
+                          Processing...
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          <Send className="mr-2 h-4 w-4" />
+                          Auto-Generate Quote
+                        </span>
+                      )}
+                    </Button>
+                  )}
                 </div>
                 
                 {/* Show confidence indicator for parsed data */}
