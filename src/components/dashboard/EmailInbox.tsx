@@ -20,6 +20,12 @@ import { mockProducts } from "@/data/mockData";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from "@/components/ui/tabs";
 
 export function EmailInbox() {
   const { toast } = useToast();
@@ -215,70 +221,71 @@ export function EmailInbox() {
     .filter(email => categoryFilter === 'all' || email.category === categoryFilter);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Unprocessed Emails</CardTitle>
-          <CardDescription>
-            Recent unprocessed emails requiring quotation
-          </CardDescription>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-2 mr-2">
+    <Card className="shadow-md border-gray-200">
+      <CardHeader className="bg-white border-b border-gray-100 px-6">
+        <div className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-xl font-semibold">Unprocessed Emails</CardTitle>
+            <CardDescription className="text-gray-500">
+              Recent unprocessed emails requiring quotation
+            </CardDescription>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-1 mr-2">
+              <Switch
+                id="auto-process"
+                checked={autoProcessEnabled}
+                onCheckedChange={setAutoProcessEnabled}
+                className="data-[state=checked]:bg-green-500"
+              />
+              <Label htmlFor="auto-process" className="text-sm whitespace-nowrap">
+                {autoProcessEnabled ? 
+                  <span className="text-green-600 font-medium">Auto ON</span> : 
+                  <span className="text-gray-500">Auto OFF</span>
+                }
+              </Label>
+            </div>
             <Button 
-              variant={categoryFilter === 'all' ? "default" : "outline"} 
-              size="sm"
+              variant="outline" 
+              size="icon" 
+              onClick={() => refetch()} 
+              disabled={isLoading}
+              className="h-8 w-8"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </div>
+
+        <Tabs defaultValue="all" className="mt-4 w-full">
+          <TabsList className="grid grid-cols-3 w-[300px]">
+            <TabsTrigger 
+              value="all" 
               onClick={() => setCategoryFilter('all')}
-              className="text-xs"
             >
               All
-            </Button>
-            <Button 
-              variant={categoryFilter === 'quotation' ? "default" : "outline"} 
-              size="sm"
+            </TabsTrigger>
+            <TabsTrigger 
+              value="quotation" 
               onClick={() => setCategoryFilter('quotation')}
-              className="text-xs"
             >
               Quotations
-            </Button>
-            <Button 
-              variant={categoryFilter === 'other' ? "default" : "outline"} 
-              size="sm"
+            </TabsTrigger>
+            <TabsTrigger 
+              value="other" 
               onClick={() => setCategoryFilter('other')}
-              className="text-xs"
             >
               Other
-            </Button>
-          </div>
-          <div className="flex items-center">
-            <Switch
-              id="auto-process"
-              checked={autoProcessEnabled}
-              onCheckedChange={setAutoProcessEnabled}
-            />
-            <Label htmlFor="auto-process" className="ml-2 text-sm">
-              {autoProcessEnabled ? 
-                <span className="flex items-center text-green-600">Auto ON</span> : 
-                <span className="flex items-center text-muted-foreground">Auto OFF</span>
-              }
-            </Label>
-          </div>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={() => refetch()} 
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="p-5">
+        <div className="space-y-3">
           {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-pulse flex flex-col items-center">
-                <RefreshCw className="h-8 w-8 mb-2" />
+                <RefreshCw className="h-8 w-8 mb-2 text-gray-400" />
                 <p className="text-sm text-muted-foreground">Loading emails...</p>
               </div>
             </div>
@@ -297,38 +304,52 @@ export function EmailInbox() {
             displayEmails.map((email) => (
               <div
                 key={email.id}
-                className="flex flex-col space-y-2 border rounded-md p-4"
+                className="flex flex-col space-y-3 border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors"
               >
                 <div className="flex justify-between items-center">
-                  <div className="font-medium">{email.from}</div>
+                  <div className="font-medium text-gray-800">{email.from}</div>
                   <div className="flex items-center space-x-2">
-                    <Badge variant={email.category === 'quotation' ? 'default' : 'secondary'}>
+                    <Badge variant={email.category === 'quotation' ? 'default' : 'secondary'} className={email.category === 'quotation' ? 'bg-blue-500' : ''}>
                       {email.category === 'quotation' ? 'Quotation' : 'Other'}
                     </Badge>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-xs text-gray-500">
                       {new Date(email.date).toLocaleString()}
                     </div>
                   </div>
                 </div>
-                <div className="text-sm font-medium">{email.subject}</div>
-                <div className="text-sm text-muted-foreground line-clamp-2">
+                <div className="text-sm font-medium text-gray-700">{email.subject}</div>
+                <div className="text-sm text-gray-600 line-clamp-2">
                   {email.body}
                 </div>
-                <div className="flex justify-end space-x-2 pt-2">
+                
+                {/* Show confidence indicator for parsed data */}
+                {email.category === 'quotation' && (
+                  <div className="text-xs flex items-center">
+                    <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
+                    <span className="text-gray-500">
+                      AI Detection: {parseEmailForQuotation(email).confidence !== 'none' ? 
+                        `${parseEmailForQuotation(email).product} × ${parseEmailForQuotation(email).quantity}` : 
+                        "No product detected"}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="flex justify-end space-x-2 pt-1">
                   <Button 
                     variant="outline" 
                     size="sm" 
                     onClick={() => handleProcessEmail(email)}
                     disabled={processingEmailId === email.id}
+                    className="h-8"
                   >
                     {processingEmailId === email.id ? (
                       <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4 animate-pulse" />
+                        <FileText className="mr-2 h-3 w-3 animate-pulse" />
                         Processing...
                       </span>
                     ) : (
                       <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4" />
+                        <FileText className="mr-2 h-3 w-3" />
                         Process Manually
                       </span>
                     )}
@@ -338,42 +359,35 @@ export function EmailInbox() {
                       size="sm" 
                       onClick={() => handleProcessEmail(email, true)}
                       disabled={processingEmailId === email.id}
+                      className="h-8 bg-green-500 hover:bg-green-600"
                     >
                       {processingEmailId === email.id ? (
                         <span className="flex items-center">
-                          <Send className="mr-2 h-4 w-4 animate-pulse" />
+                          <Send className="mr-2 h-3 w-3 animate-pulse" />
                           Processing...
                         </span>
                       ) : (
                         <span className="flex items-center">
-                          <Send className="mr-2 h-4 w-4" />
+                          <Send className="mr-2 h-3 w-3" />
                           Auto-Generate Quote
                         </span>
                       )}
                     </Button>
                   )}
                 </div>
-                
-                {/* Show confidence indicator for parsed data */}
-                {processingEmailId !== email.id && email.category === 'quotation' && (
-                  <div className="pt-2 text-xs">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
-                      <span className="text-muted-foreground">
-                        AI Detection: {parseEmailForQuotation(email).confidence !== 'none' ? 
-                          `${parseEmailForQuotation(email).product} × ${parseEmailForQuotation(email).quantity}` : 
-                          "No product detected"}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
             ))
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {categoryFilter !== 'all' 
-                ? `No ${categoryFilter} emails found`
-                : "No unprocessed emails found"}
+            <div className="text-center py-12 rounded-lg border border-dashed border-gray-300 bg-gray-50">
+              <Mail className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium">
+                {categoryFilter !== 'all' 
+                  ? `No ${categoryFilter} emails found`
+                  : "No unprocessed emails found"}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                New emails will appear here automatically
+              </p>
             </div>
           )}
         </div>
