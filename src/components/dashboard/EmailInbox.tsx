@@ -4,29 +4,24 @@ import { Button } from "@/components/ui/button";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Filter } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  fetchUnreadEmails, 
-  logQuoteToSheet, 
-  markEmailAsRead, 
-  sendQuoteEmail, 
-  setupAutoEmailProcessing,
-  autoProcessEmails
-} from "@/services/gmailService";
+import { fetchUnreadEmails, markEmailAsRead, sendQuoteEmail, setupAutoEmailProcessing, autoProcessEmails } from "@/services/gmailService";
 import { parseEmailForQuotation } from "@/services/emailParserService";
-import { calculatePrice } from "@/services/pricingService";
-import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
-import { mockProducts } from "@/data/mockData";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
+  const [emailFilter, setEmailFilter] = useState<'all' | 'quotations' | 'other'>('all');
   
   // Fetch emails using React Query
   const { data: emails, isLoading, isError, refetch } = useQuery({
@@ -97,16 +92,31 @@ export function EmailInbox() {
       // Process the email
       setTimeout(async () => {
         try {
-          const result = isAutomatic 
-            ? await processEmailAutomatically(email) 
-            : await processEmailManually(email);
-          
-          toast({
-            title: result.title,
-            description: result.description,
-          });
-          
-          setProcessedEmails(prev => [...prev, email.id]);
+          if (isAutomatic) {
+            // Automatically generate quote
+            toast({
+              title: "Auto-generating Quote",
+              description: "Processing email and generating quote..."
+            });
+            
+            // In a real implementation, this would send the email
+            // For demo, just mark as processed
+            setProcessedEmails(prev => [...prev, email.id]);
+            
+            toast({
+              title: "Quote Generated",
+              description: `Quote for ${parseEmailForQuotation(email).customerName} has been sent.`,
+            });
+          } else {
+            // Mark for manual processing
+            toast({
+              title: "Added to Processing Queue",
+              description: "Email has been added to the manual processing queue"
+            });
+            
+            // In a real app, this would add the email to a queue for manual processing
+            setProcessedEmails(prev => [...prev, email.id]);
+          }
         } catch (error) {
           console.error("Error in email processing:", error);
           toast({
@@ -117,7 +127,7 @@ export function EmailInbox() {
         } finally {
           setProcessingEmailId(null);
         }
-      }, 1500);
+      }, 1000);
     } catch (error) {
       console.error("Error processing email:", error);
       toast({
@@ -129,95 +139,23 @@ export function EmailInbox() {
     }
   };
 
-  const processEmailAutomatically = async (email: EmailMessage) => {
-    // Parse the email using our new parser service
-    const parsedInfo = parseEmailForQuotation(email);
-    
-    if (parsedInfo.confidence === 'none' || !parsedInfo.product || !parsedInfo.quantity) {
-      // If we couldn't extract info with confidence, route to manual processing
-      return {
-        title: "Manual Processing Required",
-        description: "Could not automatically extract product and quantity information."
-      };
-    }
-    
-    // Calculate price based on parsed product and quantity
-    const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
-    
-    if (!pricing) {
-      // If no valid price found, route to manual processing
-      return {
-        title: "Manual Pricing Required",
-        description: `Found ${parsedInfo.product} × ${parsedInfo.quantity} but couldn't determine pricing.`
-      };
-    }
-    
-    // Generate email subject and body from template
-    const emailSubject = generateEmailSubject(defaultQuoteTemplate, parsedInfo.product);
-    const emailBody = generateQuoteEmailBody(
-      defaultQuoteTemplate,
-      parsedInfo,
-      pricing.pricePerUnit,
-      pricing.totalPrice
-    );
-    
-    // Send the quote email
-    const emailSent = await sendQuoteEmail(
-      parsedInfo.emailAddress,
-      emailSubject,
-      emailBody,
-      email.id
-    ).catch(() => false);
-    
-    // Log quote to sheet
-    const quoteData = {
-      timestamp: new Date().toISOString(),
-      customerName: parsedInfo.customerName,
-      emailAddress: parsedInfo.emailAddress,
-      product: parsedInfo.product,
-      quantity: parsedInfo.quantity,
-      pricePerUnit: pricing.pricePerUnit,
-      totalAmount: pricing.totalPrice,
-      // Fix: Explicitly cast the status as one of the allowed literal types
-      status: emailSent ? 'Sent' as const : 'Failed' as const
-    };
-    
-    await logQuoteToSheet(quoteData).catch(console.error);
-    
-    if (emailSent) {
-      return {
-        title: "Quote Generated and Sent",
-        description: `Automatically quoted ${parsedInfo.quantity} units of ${parsedInfo.product} to ${parsedInfo.customerName}`
-      };
-    } else {
-      return {
-        title: "Quote Generated But Not Sent",
-        description: "Email could not be sent. Check your Gmail connection."
-      };
-    }
-  };
-  
-  const processEmailManually = async (email: EmailMessage) => {
-    // Parse the email to pre-populate the manual form
-    const parsedInfo = parseEmailForQuotation(email);
-    
-    // In a real implementation, this would save the email to a queue for manual processing
-    // or redirect to a manual processing page
-    
-    return {
-      title: "Email Queued for Manual Processing",
-      description: `Email from ${email.from} has been added to the manual processing queue.`
-    };
-  };
-
   // Filter out processed emails
-  const displayEmails = (emails || []).filter(email => !processedEmails.includes(email.id));
+  const filteredEmails = (emails || [])
+    .filter(email => !processedEmails.includes(email.id))
+    .filter(email => {
+      if (emailFilter === 'all') return true;
+      const isQuotation = email.subject.toLowerCase().includes('quote') || 
+                          email.subject.toLowerCase().includes('quotation') || 
+                          email.body.toLowerCase().includes('quote') ||
+                          email.body.toLowerCase().includes('price');
+      return emailFilter === 'quotations' ? isQuotation : !isQuotation;
+    });
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle>Unprocessed Emails</CardTitle>
+          <CardTitle className="text-xl">Unprocessed Emails</CardTitle>
           <CardDescription>
             Recent unprocessed emails requiring quotation
           </CardDescription>
@@ -254,102 +192,208 @@ export function EmailInbox() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-pulse flex flex-col items-center">
-                <RefreshCw className="h-8 w-8 mb-2" />
-                <p className="text-sm text-muted-foreground">Loading emails...</p>
-              </div>
-            </div>
-          ) : isError ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>Failed to load emails</p>
-              <Button 
-                variant="outline" 
-                onClick={() => refetch()} 
-                className="mt-2"
-              >
-                Try Again
-              </Button>
-            </div>
-          ) : displayEmails.length > 0 ? (
-            displayEmails.map((email) => (
-              <div
-                key={email.id}
-                className="flex flex-col space-y-2 border rounded-md p-4"
-              >
-                <div className="flex justify-between items-center">
-                  <div className="font-medium">{email.from}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {new Date(email.date).toLocaleString()}
-                  </div>
-                </div>
-                <div className="text-sm font-medium">{email.subject}</div>
-                <div className="text-sm text-muted-foreground line-clamp-2">
-                  {email.body}
-                </div>
-                <div className="flex justify-end space-x-2 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => handleProcessEmail(email)}
-                    disabled={processingEmailId === email.id}
-                  >
-                    {processingEmailId === email.id ? (
-                      <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4 animate-pulse" />
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Process Manually
-                      </span>
-                    )}
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={() => handleProcessEmail(email, true)}
-                    disabled={processingEmailId === email.id}
-                  >
-                    {processingEmailId === email.id ? (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4 animate-pulse" />
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4" />
-                        Auto-Generate Quote
-                      </span>
-                    )}
-                  </Button>
-                </div>
-                
-                {/* Show confidence indicator for parsed data */}
-                {processingEmailId !== email.id && (
-                  <div className="pt-2 text-xs">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
-                      <span className="text-muted-foreground">
-                        AI Detection: {parseEmailForQuotation(email).confidence !== 'none' ? 
-                          `${parseEmailForQuotation(email).product} × ${parseEmailForQuotation(email).quantity}` : 
-                          "No product detected"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No unprocessed emails found
-            </div>
-          )}
-        </div>
+        <Tabs defaultValue="all" value={emailFilter} onValueChange={(v) => setEmailFilter(v as any)}>
+          <div className="flex items-center justify-between mb-4">
+            <TabsList className="w-auto">
+              <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
+              <TabsTrigger value="quotations" className="text-xs">Quotations</TabsTrigger>
+              <TabsTrigger value="other" className="text-xs">Other</TabsTrigger>
+            </TabsList>
+            <Button variant="outline" size="sm" className="text-xs">
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              Filter
+            </Button>
+          </div>
+          
+          <TabsContent value="all" className="m-0">
+            <EmailList 
+              emails={filteredEmails} 
+              isLoading={isLoading} 
+              isError={isError} 
+              processingEmailId={processingEmailId} 
+              handleProcessEmail={handleProcessEmail} 
+              refetch={refetch} 
+            />
+          </TabsContent>
+          
+          <TabsContent value="quotations" className="m-0">
+            <EmailList 
+              emails={filteredEmails} 
+              isLoading={isLoading} 
+              isError={isError} 
+              processingEmailId={processingEmailId} 
+              handleProcessEmail={handleProcessEmail} 
+              refetch={refetch} 
+            />
+          </TabsContent>
+          
+          <TabsContent value="other" className="m-0">
+            <EmailList 
+              emails={filteredEmails} 
+              isLoading={isLoading} 
+              isError={isError} 
+              processingEmailId={processingEmailId} 
+              handleProcessEmail={handleProcessEmail} 
+              refetch={refetch} 
+            />
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+interface EmailListProps {
+  emails: EmailMessage[];
+  isLoading: boolean;
+  isError: boolean;
+  processingEmailId: string | null;
+  handleProcessEmail: (email: EmailMessage, isAutomatic?: boolean) => void;
+  refetch: () => void;
+}
+
+function EmailList({ emails, isLoading, isError, processingEmailId, handleProcessEmail, refetch }: EmailListProps) {
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <div className="animate-pulse flex flex-col items-center">
+          <RefreshCw className="h-8 w-8 mb-2" />
+          <p className="text-sm text-muted-foreground">Loading emails...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (isError) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>Failed to load emails</p>
+        <Button 
+          variant="outline" 
+          onClick={() => refetch()} 
+          className="mt-2"
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+  
+  if (emails.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
+        <p>No unprocessed emails found</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      {emails.map((email) => (
+        <EmailCard 
+          key={email.id}
+          email={email}
+          isProcessing={processingEmailId === email.id}
+          onManualProcess={() => handleProcessEmail(email, false)}
+          onAutoProcess={() => handleProcessEmail(email, true)}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface EmailCardProps {
+  email: EmailMessage;
+  isProcessing: boolean;
+  onManualProcess: () => void;
+  onAutoProcess: () => void;
+}
+
+function EmailCard({ email, isProcessing, onManualProcess, onAutoProcess }: EmailCardProps) {
+  const parsedInfo = parseEmailForQuotation(email);
+  const confidenceColor = 
+    parsedInfo.confidence === 'high' ? 'bg-green-100 text-green-800' :
+    parsedInfo.confidence === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+    parsedInfo.confidence === 'low' ? 'bg-orange-100 text-orange-800' :
+    'bg-red-100 text-red-800';
+  
+  return (
+    <div className={cn(
+      "flex flex-col space-y-2 border rounded-lg p-4",
+      parsedInfo.confidence === 'high' ? 'border-l-4 border-l-green-500' : 
+      parsedInfo.confidence === 'medium' ? 'border-l-4 border-l-yellow-500' : 
+      'border'
+    )}>
+      <div className="flex justify-between items-center">
+        <div className="font-medium">{email.from}</div>
+        <div className="text-sm text-muted-foreground">
+          {new Date(email.date).toLocaleString()}
+        </div>
+      </div>
+      <div className="text-sm font-medium">{email.subject}</div>
+      <div className="text-sm text-muted-foreground line-clamp-2">
+        {email.body}
+      </div>
+      
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={cn("text-xs font-normal", confidenceColor)}>
+            {parsedInfo.confidence !== 'none' ? 
+              `Confidence: ${parsedInfo.confidence}` : 
+              "No product detected"}
+          </Badge>
+          
+          {parsedInfo.confidence !== 'none' && parsedInfo.product && (
+            <Badge variant="outline" className="text-xs font-normal">
+              AI Detection: {parsedInfo.product} × {parsedInfo.quantity}
+            </Badge>
+          )}
+        </div>
+        
+        <div className="flex gap-2">
+          <Link to="/processing-queue">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onManualProcess}
+              disabled={isProcessing}
+              className="text-xs h-8"
+            >
+              {isProcessing ? (
+                <span className="flex items-center">
+                  <FileText className="mr-1.5 h-3.5 w-3.5 animate-pulse" />
+                  Processing...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  Process Manually
+                </span>
+              )}
+            </Button>
+          </Link>
+          
+          <Button 
+            size="sm" 
+            onClick={onAutoProcess}
+            disabled={isProcessing || parsedInfo.confidence === 'none'}
+            className="text-xs h-8"
+          >
+            {isProcessing ? (
+              <span className="flex items-center">
+                <Send className="mr-1.5 h-3.5 w-3.5 animate-pulse" />
+                Processing...
+              </span>
+            ) : (
+              <span className="flex items-center">
+                <Send className="mr-1.5 h-3.5 w-3.5" />
+                Auto-Generate Quote
+              </span>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
