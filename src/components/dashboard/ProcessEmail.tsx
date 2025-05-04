@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { mockProducts } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
-import { Send, Printer, Download, Wand2 } from "lucide-react";
+import { Send, Printer, Download, Wand2, Check } from "lucide-react";
 import { parseEmailForQuotation } from "@/services/emailParserService";
 import { sendQuoteEmail } from "@/services/gmailService";
 import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
@@ -28,6 +28,7 @@ export function ProcessEmail() {
 
   const [quoteGenerated, setQuoteGenerated] = useState(false);
   const [autoAnalysisActive, setAutoAnalysisActive] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
 
   const handleQuantityChange = (newQuantity: number) => {
     // Find the appropriate price based on quantity
@@ -45,6 +46,9 @@ export function ProcessEmail() {
       quantity: newQuantity,
       calculatedPrice
     });
+    
+    // Reset quote generated state when quantity changes
+    setQuoteGenerated(false);
   };
 
   const handleProductChange = (newProduct: string) => {
@@ -63,18 +67,39 @@ export function ProcessEmail() {
       productName: newProduct,
       calculatedPrice
     });
+    
+    // Reset quote generated state when product changes
+    setQuoteGenerated(false);
   };
 
   const handleGenerate = () => {
+    if (!emailData.productName || !emailData.quantity) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a product and enter a quantity.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setQuoteGenerated(true);
     toast({
       title: "Quote Generated",
-      description: "A quote has been generated and saved",
+      description: "A quote has been generated and is ready to send",
     });
   };
 
   const handleSend = async () => {
     try {
+      if (!quoteGenerated) {
+        toast({
+          title: "Generate Quote First",
+          description: "Please generate a quote before sending.",
+          variant: "destructive"
+        });
+        return;
+      }
+
       // Parse the email for customer name and email
       const parsedInfo = parseEmailForQuotation({
         id: "manual",
@@ -100,6 +125,11 @@ export function ProcessEmail() {
         emailData.calculatedPrice
       );
       
+      toast({
+        title: "Sending Quote",
+        description: "Connecting to email service...",
+      });
+
       // Send the email
       const emailSent = await sendQuoteEmail(
         parsedInfo.emailAddress,
@@ -129,6 +159,8 @@ export function ProcessEmail() {
       
       if (emailSent) {
         setQuoteGenerated(false);
+        // Reset form for next quote
+        setAnalysisComplete(false);
       }
     } catch (error) {
       console.error("Error sending quote:", error);
@@ -229,6 +261,9 @@ Date,${new Date().toLocaleDateString()}
           description: `Detected ${parsedInfo.product} × ${parsedInfo.quantity} with ${parsedInfo.confidence} confidence.`,
         });
         
+        // Mark analysis as complete
+        setAnalysisComplete(true);
+        
         // Generate the quote
         setQuoteGenerated(true);
       } catch (error) {
@@ -242,6 +277,19 @@ Date,${new Date().toLocaleDateString()}
         setAutoAnalysisActive(false);
       }
     }, 1500);
+  };
+
+  const handleEmailDataChange = (field: string, value: string | number) => {
+    setEmailData({
+      ...emailData,
+      [field]: value
+    });
+    
+    // Reset analysis state when email data changes
+    if (field === 'body' || field === 'from' || field === 'subject') {
+      setAnalysisComplete(false);
+      setQuoteGenerated(false);
+    }
   };
 
   return (
@@ -260,7 +308,7 @@ Date,${new Date().toLocaleDateString()}
               <Input
                 id="from"
                 value={emailData.from}
-                onChange={(e) => setEmailData({...emailData, from: e.target.value})}
+                onChange={(e) => handleEmailDataChange('from', e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -268,7 +316,7 @@ Date,${new Date().toLocaleDateString()}
               <Input
                 id="subject"
                 value={emailData.subject}
-                onChange={(e) => setEmailData({...emailData, subject: e.target.value})}
+                onChange={(e) => handleEmailDataChange('subject', e.target.value)}
               />
             </div>
           </div>
@@ -284,15 +332,30 @@ Date,${new Date().toLocaleDateString()}
                 onClick={handleAutoAnalyzeEmail}
                 disabled={autoAnalysisActive}
               >
-                <Wand2 className="h-3 w-3" /> 
-                {autoAnalysisActive ? "Analyzing..." : "Auto-Analyze"}
+                {autoAnalysisActive ? (
+                  <>
+                    <Wand2 className="h-3 w-3 animate-spin" /> 
+                    Analyzing...
+                  </>
+                ) : analysisComplete ? (
+                  <>
+                    <Check className="h-3 w-3" /> 
+                    Analyzed
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="h-3 w-3" /> 
+                    Auto-Analyze
+                  </>
+                )}
               </Button>
             </div>
             <Textarea
               id="body"
               rows={4}
               value={emailData.body}
-              onChange={(e) => setEmailData({...emailData, body: e.target.value})}
+              onChange={(e) => handleEmailDataChange('body', e.target.value)}
+              className="font-mono text-sm"
             />
           </div>
 
@@ -345,15 +408,16 @@ Date,${new Date().toLocaleDateString()}
             </div>
             
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleGenerate}>
-                Preview Quote
-              </Button>
-              <Button onClick={handleSend} disabled={!quoteGenerated}>
-                <Send className="mr-2 h-4 w-4" />
-                Send Quote
-              </Button>
-              {quoteGenerated && (
+              {!quoteGenerated ? (
+                <Button onClick={handleGenerate}>
+                  Preview Quote
+                </Button>
+              ) : (
                 <>
+                  <Button onClick={handleSend}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Quote
+                  </Button>
                   <Button variant="outline" onClick={handlePrint}>
                     <Printer className="mr-2 h-4 w-4" />
                     Print
