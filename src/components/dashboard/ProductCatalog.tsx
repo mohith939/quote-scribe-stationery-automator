@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -5,17 +6,15 @@ import { Input } from "@/components/ui/input";
 import { useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
-import { Search, FileSpreadsheet, InfoIcon, Plus, Trash2, IndianRupee } from "lucide-react";
+import { Search, FileSpreadsheet, InfoIcon, Plus, Trash2, IndianRupee, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Updated product data based on the image
 const initialProducts: Product[] = [
-  // Unknown category
   { id: "zta-500n", name: "ZTA-500N- Digital Force Gauge", minQuantity: 1, maxQuantity: 999, pricePerUnit: 83200.00 },
   { id: "glass-thermo", name: "Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C", minQuantity: 1, maxQuantity: 999, pricePerUnit: 750.00 },
-  // Other category
   { id: "zero-plate-non-ferrous", name: "zero plate Non-Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00 },
   { id: "zero-plate-foil", name: "Zero Plate Foil", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1600.00 },
   { id: "zero-plate-ferrous-non-ferrous", name: "Zero Plate Ferrous & Non Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 650.00 },
@@ -34,33 +33,11 @@ export function ProductCatalog() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   
-  // Group products by category for better display
-  const groupProductsByCategory = (productList: Product[]) => {
-    const grouped: Record<string, Product[]> = {};
-    productList.forEach((product) => {
-      // Categorize based on product name patterns
-      let category = "Other";
-      if (product.name.toLowerCase().includes("zta") || product.name.toLowerCase().includes("digital") || product.name.toLowerCase().includes("gauge")) {
-        category = "Unknown";
-      } else if (product.name.toLowerCase().includes("thermometer") || product.name.toLowerCase().includes("glass")) {
-        category = "Unknown";
-      }
-      
-      if (!grouped[category]) {
-        grouped[category] = [];
-      }
-      grouped[category].push(product);
-    });
-    return grouped;
-  };
-  
   // Filter products based on search term
   const filteredProducts = products.filter(product => 
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  
-  const groupedProducts = groupProductsByCategory(filteredProducts);
 
   const handleFileUploadClick = () => {
     fileInputRef.current?.click();
@@ -195,178 +172,174 @@ export function ProductCatalog() {
     });
   };
 
-  const handleClearAll = () => {
-    setProducts([]);
-    toast({
-      title: "All Products Cleared",
-      description: "Product catalog has been cleared.",
-      variant: "destructive"
-    });
-  };
-
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Product Catalog</CardTitle>
-            <CardDescription>
-              Manage products and pricing slabs
-            </CardDescription>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search products by brand, description or code..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 w-80"
-              />
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-xl font-semibold">Product Catalog</CardTitle>
+              <CardDescription className="text-sm text-gray-600">
+                Manage products and pricing information
+              </CardDescription>
             </div>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept=".xlsx,.xls,.csv" 
-              onChange={handleFileChange}
-            />
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowFormatInfo(true)}
-            >
-              <InfoIcon className="mr-2 h-4 w-4" />
-              Import Format
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleFileUploadClick}
-              disabled={isImporting}
-            >
-              {isImporting ? (
-                <span className="flex items-center">
-                  <FileSpreadsheet className="mr-2 h-4 w-4 animate-pulse" />
-                  Importing...
-                </span>
-              ) : (
-                <span className="flex items-center">
-                  <FileSpreadsheet className="mr-2 h-4 w-4" />
-                  Import from Excel
-                </span>
-              )}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsEditing(!isEditing)}
-            >
-              {isEditing ? "View Mode" : "Edit Mode"}
-            </Button>
-            <Button size="sm" onClick={handleAddProduct}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={handleClearAll}
-            >
-              Clear All Products
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-64"
+                />
+              </div>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".xlsx,.xls,.csv" 
+                onChange={handleFileChange}
+              />
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowFormatInfo(true)}
+              >
+                <InfoIcon className="mr-2 h-4 w-4" />
+                Format Info
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleFileUploadClick}
+                disabled={isImporting}
+              >
+                {isImporting ? (
+                  <>
+                    <Upload className="mr-2 h-4 w-4 animate-pulse" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Excel
+                  </>
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsEditing(!isEditing)}
+              >
+                {isEditing ? "View Mode" : "Edit Mode"}
+              </Button>
+              <Button size="sm" onClick={handleAddProduct}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {Object.entries(groupedProducts).map(([category, categoryProducts]) => (
-            <div key={category} className="mb-8">
-              <h3 className="text-lg font-medium mb-4 text-gray-700">{category}</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[120px]">Product Code</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right w-[120px]">Price/Unit</TableHead>
-                    <TableHead className="text-right w-[100px]">GST Rate</TableHead>
-                    {isEditing && <TableHead className="w-[100px] text-right">Actions</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {categoryProducts.map((product) => (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-medium">
-                        {isEditing ? (
-                          <Input
-                            defaultValue={product.id}
-                            className="w-full p-1 text-sm"
-                          />
-                        ) : (
-                          product.id
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isEditing ? (
-                          <Input
-                            defaultValue={product.name}
-                            className="w-full p-1 text-sm"
-                          />
-                        ) : (
-                          product.name
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end">
-                            <IndianRupee className="h-4 w-4 mr-1" />
-                            <Input
-                              type="number"
-                              defaultValue={product.pricePerUnit}
-                              step="0.01"
-                              className="w-24 p-1 text-right text-sm"
-                            />
-                          </div>
-                        ) : (
-                          <span className="flex items-center justify-end">
-                            <IndianRupee className="h-4 w-4 mr-1" />
-                            {product.pricePerUnit.toFixed(2)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        18%
-                      </TableCell>
-                      {isEditing && (
-                        <TableCell className="text-right">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 text-red-600"
-                            onClick={() => handleDeleteProduct(product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="w-32 font-semibold">Product Code</TableHead>
+                  <TableHead className="font-semibold">Product Description</TableHead>
+                  <TableHead className="w-32 text-right font-semibold">Price per Unit</TableHead>
+                  <TableHead className="w-24 text-center font-semibold">GST</TableHead>
+                  {isEditing && <TableHead className="w-20 text-center font-semibold">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product, index) => (
+                  <TableRow key={product.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <TableCell className="font-medium text-sm">
+                      {isEditing ? (
+                        <Input
+                          defaultValue={product.id}
+                          className="h-8 text-xs"
+                        />
+                      ) : (
+                        <span className="text-blue-600">{product.id}</span>
                       )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ))}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {isEditing ? (
+                        <Input
+                          defaultValue={product.name}
+                          className="h-8 text-xs"
+                        />
+                      ) : (
+                        product.name
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end">
+                          <IndianRupee className="h-4 w-4 mr-1 text-gray-500" />
+                          <Input
+                            type="number"
+                            defaultValue={product.pricePerUnit}
+                            step="0.01"
+                            className="w-24 h-8 text-right text-xs"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end font-medium">
+                          <IndianRupee className="h-4 w-4 mr-1 text-gray-500" />
+                          <span>{product.pricePerUnit.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-gray-600">
+                      18%
+                    </TableCell>
+                    {isEditing && (
+                      <TableCell className="text-center">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          
           {filteredProducts.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-12 text-gray-500">
               {searchTerm ? "No products found matching your search." : "No products in catalog."}
             </div>
           )}
-          {isEditing && (
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button>Save Changes</Button>
+          
+          {isEditing && filteredProducts.length > 0 && (
+            <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => {
+                setIsEditing(false);
+                toast({
+                  title: "Changes Saved",
+                  description: "Product catalog has been updated."
+                });
+              }}>
+                Save Changes
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
       
+      {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent>
           <DialogHeader>
@@ -395,6 +368,7 @@ export function ProductCatalog() {
         </DialogContent>
       </Dialog>
 
+      {/* Format Info Dialog */}
       <Dialog open={showFormatInfo} onOpenChange={setShowFormatInfo}>
         <DialogContent>
           <DialogHeader>
