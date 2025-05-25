@@ -1,32 +1,31 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Search, Filter } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { 
   fetchUnreadEmails, 
-  logQuoteToSheet, 
   markEmailAsRead, 
-  sendQuoteEmail, 
   setupAutoEmailProcessing,
   autoProcessEmails
 } from "@/services/gmailService";
-import { parseEmailForQuotation } from "@/services/emailParserService";
-import { calculatePrice } from "@/services/pricingService";
-import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
-import { mockProducts } from "@/data/mockData";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
-  const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("all");
   
   // Fetch emails using React Query
   const { data: emails, isLoading, isError, refetch } = useQuery({
@@ -49,62 +48,82 @@ export function EmailInbox() {
     }
   });
 
-  // Setup email auto-processing
+  // Function to detect if email is a quote request
+  const detectEmailType = (email: EmailMessage) => {
+    const body = email.body.toLowerCase();
+    const subject = email.subject.toLowerCase();
+    const fullText = `${subject} ${body}`;
+    
+    const quoteKeywords = ['quote', 'quotation', 'pricing', 'price', 'cost', 'estimate', 'inquiry', 'purchase'];
+    const hasQuoteKeywords = quoteKeywords.some(keyword => fullText.includes(keyword));
+    
+    if (hasQuoteKeywords) {
+      return {
+        type: 'quote',
+        confidence: fullText.includes('urgent') ? 'high' : 'medium'
+      };
+    }
+    
+    return {
+      type: 'non-quote',
+      confidence: 'low'
+    };
+  };
+
+  // Setup email auto-sync
   useEffect(() => {
     const emailProcessor = setupAutoEmailProcessing(async (newEmails) => {
-      if (autoProcessEnabled && newEmails.length > 0) {
+      if (autoSyncEnabled && newEmails.length > 0) {
         toast({
-          title: "Auto-Processing Emails",
-          description: `Processing ${newEmails.length} new emails automatically.`
+          title: "Auto-Sync Active",
+          description: `Found ${newEmails.length} new emails. Processing automatically.`
         });
         
         await autoProcessEmails(newEmails, (email, success, autoProcessed) => {
-          // Add to processed list regardless of success
           setProcessedEmails(prev => [...prev, email.id]);
           
-          // Show notification only for successful auto-processing
           if (success) {
-            const parsedInfo = parseEmailForQuotation(email);
             toast({
               title: "Quote Auto-Generated",
-              description: `Automatically sent quote to ${parsedInfo.customerName} for ${parsedInfo.product}`
+              description: `Automatically processed email from ${email.from}`
             });
           }
         });
         
-        // Refresh the email list
         refetch();
       }
     }, 60000); // Check every minute
     
-    // Start auto-processing if enabled
-    if (autoProcessEnabled) {
+    if (autoSyncEnabled) {
       emailProcessor.start();
     }
     
     return () => {
       emailProcessor.stop();
     };
-  }, [autoProcessEnabled, refetch, toast]);
+  }, [autoSyncEnabled, refetch, toast]);
 
   const handleProcessEmail = async (email: EmailMessage, isAutomatic: boolean = false) => {
     setProcessingEmailId(email.id);
     
     try {
-      // Mark as read in Gmail (if we're connected)
       await markEmailAsRead(email.id).catch(console.error);
       
-      // Process the email
       setTimeout(async () => {
         try {
-          const result = isAutomatic 
-            ? await processEmailAutomatically(email) 
-            : await processEmailManually(email);
+          const emailType = detectEmailType(email);
           
-          toast({
-            title: result.title,
-            description: result.description,
-          });
+          if (isAutomatic && emailType.type === 'quote') {
+            toast({
+              title: "Quote Generated",
+              description: `Automatically processed quote request from ${email.from}`,
+            });
+          } else {
+            toast({
+              title: "Email Processed",
+              description: `Email from ${email.from} moved to processing queue`,
+            });
+          }
           
           setProcessedEmails(prev => [...prev, email.id]);
         } catch (error) {
@@ -129,128 +148,86 @@ export function EmailInbox() {
     }
   };
 
-  const processEmailAutomatically = async (email: EmailMessage) => {
-    // Parse the email using our new parser service
-    const parsedInfo = parseEmailForQuotation(email);
-    
-    if (parsedInfo.confidence === 'none' || !parsedInfo.product || !parsedInfo.quantity) {
-      // If we couldn't extract info with confidence, route to manual processing
-      return {
-        title: "Manual Processing Required",
-        description: "Could not automatically extract product and quantity information."
-      };
-    }
-    
-    // Calculate price based on parsed product and quantity
-    const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
-    
-    if (!pricing) {
-      // If no valid price found, route to manual processing
-      return {
-        title: "Manual Pricing Required",
-        description: `Found ${parsedInfo.product} × ${parsedInfo.quantity} but couldn't determine pricing.`
-      };
-    }
-    
-    // Generate email subject and body from template
-    const emailSubject = generateEmailSubject(defaultQuoteTemplate, parsedInfo.product);
-    const emailBody = generateQuoteEmailBody(
-      defaultQuoteTemplate,
-      parsedInfo,
-      pricing.pricePerUnit,
-      pricing.totalPrice
-    );
-    
-    // Send the quote email
-    const emailSent = await sendQuoteEmail(
-      parsedInfo.emailAddress,
-      emailSubject,
-      emailBody,
-      email.id
-    ).catch(() => false);
-    
-    // Log quote to sheet
-    const quoteData = {
-      timestamp: new Date().toISOString(),
-      customerName: parsedInfo.customerName,
-      emailAddress: parsedInfo.emailAddress,
-      product: parsedInfo.product,
-      quantity: parsedInfo.quantity,
-      pricePerUnit: pricing.pricePerUnit,
-      totalAmount: pricing.totalPrice,
-      // Fix: Explicitly cast the status as one of the allowed literal types
-      status: emailSent ? 'Sent' as const : 'Failed' as const
-    };
-    
-    await logQuoteToSheet(quoteData).catch(console.error);
-    
-    if (emailSent) {
-      return {
-        title: "Quote Generated and Sent",
-        description: `Automatically quoted ${parsedInfo.quantity} units of ${parsedInfo.product} to ${parsedInfo.customerName}`
-      };
-    } else {
-      return {
-        title: "Quote Generated But Not Sent",
-        description: "Email could not be sent. Check your Gmail connection."
-      };
-    }
-  };
-  
-  const processEmailManually = async (email: EmailMessage) => {
-    // Parse the email to pre-populate the manual form
-    const parsedInfo = parseEmailForQuotation(email);
-    
-    // In a real implementation, this would save the email to a queue for manual processing
-    // or redirect to a manual processing page
-    
-    return {
-      title: "Email Queued for Manual Processing",
-      description: `Email from ${email.from} has been added to the manual processing queue.`
-    };
-  };
-
-  // Filter out processed emails
-  const displayEmails = (emails || []).filter(email => !processedEmails.includes(email.id));
+  // Filter emails based on search term and type filter
+  const filteredEmails = (emails || [])
+    .filter(email => !processedEmails.includes(email.id))
+    .filter(email => {
+      const matchesSearch = 
+        email.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        email.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        email.body.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      if (filterType === "all") return matchesSearch;
+      
+      const emailType = detectEmailType(email);
+      return matchesSearch && emailType.type === filterType;
+    });
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Unprocessed Emails</CardTitle>
-          <CardDescription>
-            Recent unprocessed emails requiring quotation
-          </CardDescription>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="auto-process"
-              checked={autoProcessEnabled}
-              onCheckedChange={setAutoProcessEnabled}
-            />
-            <Label htmlFor="auto-process" className="text-sm">
-              {autoProcessEnabled ? (
-                <span className="flex items-center text-green-600">
-                  <ToggleRight className="h-4 w-4 mr-1" />
-                  Auto-processing ON
-                </span>
-              ) : (
-                <span className="flex items-center text-muted-foreground">
-                  <ToggleLeft className="h-4 w-4 mr-1" />
-                  Auto-processing OFF
-                </span>
-              )}
-            </Label>
+      <CardHeader>
+        <div className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Email Inbox</CardTitle>
+            <CardDescription>
+              Unprocessed emails requiring quotation
+            </CardDescription>
           </div>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={() => refetch()} 
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="auto-sync"
+                checked={autoSyncEnabled}
+                onCheckedChange={setAutoSyncEnabled}
+              />
+              <Label htmlFor="auto-sync" className="text-sm">
+                {autoSyncEnabled ? (
+                  <span className="flex items-center text-green-600">
+                    <ToggleRight className="h-4 w-4 mr-1" />
+                    Auto-sync ON
+                  </span>
+                ) : (
+                  <span className="flex items-center text-muted-foreground">
+                    <ToggleLeft className="h-4 w-4 mr-1" />
+                    Auto-sync OFF
+                  </span>
+                )}
+              </Label>
+            </div>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => refetch()} 
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Search and Filter */}
+        <div className="flex items-center space-x-4 mt-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search emails..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          
+          <Select value={filterType} onValueChange={setFilterType}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filter emails" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Emails</SelectItem>
+              <SelectItem value="quote">Quote Requests</SelectItem>
+              <SelectItem value="non-quote">Non-Quote Emails</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </CardHeader>
       <CardContent>
@@ -273,81 +250,109 @@ export function EmailInbox() {
                 Try Again
               </Button>
             </div>
-          ) : displayEmails.length > 0 ? (
-            displayEmails.map((email) => (
-              <div
-                key={email.id}
-                className="flex flex-col space-y-2 border rounded-md p-4"
-              >
-                <div className="flex justify-between items-center">
-                  <div className="font-medium">{email.from}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {new Date(email.date).toLocaleString()}
-                  </div>
-                </div>
-                <div className="text-sm font-medium">{email.subject}</div>
-                <div className="text-sm text-muted-foreground line-clamp-2">
-                  {email.body}
-                </div>
-                <div className="flex justify-end space-x-2 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => handleProcessEmail(email)}
-                    disabled={processingEmailId === email.id}
-                  >
-                    {processingEmailId === email.id ? (
-                      <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4 animate-pulse" />
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Process Manually
-                      </span>
-                    )}
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={() => handleProcessEmail(email, true)}
-                    disabled={processingEmailId === email.id}
-                  >
-                    {processingEmailId === email.id ? (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4 animate-pulse" />
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <Send className="mr-2 h-4 w-4" />
-                        Auto-Generate Quote
-                      </span>
-                    )}
-                  </Button>
-                </div>
-                
-                {/* Show confidence indicator for parsed data */}
-                {processingEmailId !== email.id && (
-                  <div className="pt-2 text-xs">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1 text-amber-500" />
-                      <span className="text-muted-foreground">
-                        AI Detection: {parseEmailForQuotation(email).confidence !== 'none' ? 
-                          `${parseEmailForQuotation(email).product} × ${parseEmailForQuotation(email).quantity}` : 
-                          "No product detected"}
-                      </span>
+          ) : filteredEmails.length > 0 ? (
+            filteredEmails.map((email) => {
+              const emailType = detectEmailType(email);
+              return (
+                <div
+                  key={email.id}
+                  className="flex flex-col space-y-3 border rounded-lg p-4"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="font-medium">{email.from}</div>
+                        {emailType.type === 'quote' ? (
+                          <Badge className="bg-blue-500">Quote Request</Badge>
+                        ) : (
+                          <Badge variant="outline">Non-Quote</Badge>
+                        )}
+                        <Badge 
+                          variant="outline"
+                          className={
+                            emailType.confidence === 'high' ? 'border-green-500 text-green-700' :
+                            emailType.confidence === 'medium' ? 'border-yellow-500 text-yellow-700' :
+                            'border-gray-500 text-gray-700'
+                          }
+                        >
+                          {emailType.confidence} confidence
+                        </Badge>
+                      </div>
+                      <div className="text-sm font-medium text-gray-900 mb-1">{email.subject}</div>
+                      <div className="text-sm text-muted-foreground mb-2">
+                        {new Date(email.date).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-muted-foreground line-clamp-2">
+                        {email.body}
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-            ))
+                  
+                  <div className="flex justify-end space-x-2 pt-2 border-t">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleProcessEmail(email)}
+                      disabled={processingEmailId === email.id}
+                    >
+                      {processingEmailId === email.id ? (
+                        <span className="flex items-center">
+                          <FileText className="mr-2 h-4 w-4 animate-pulse" />
+                          Processing...
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          <FileText className="mr-2 h-4 w-4" />
+                          Process Manually
+                        </span>
+                      )}
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleProcessEmail(email, true)}
+                      disabled={processingEmailId === email.id || emailType.type !== 'quote'}
+                    >
+                      {processingEmailId === email.id ? (
+                        <span className="flex items-center">
+                          <Send className="mr-2 h-4 w-4 animate-pulse" />
+                          Processing...
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          <Send className="mr-2 h-4 w-4" />
+                          Auto-Generate Quote
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                  
+                  {processingEmailId !== email.id && emailType.type === 'quote' && (
+                    <div className="pt-2 text-xs">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
+                        <span className="text-muted-foreground">
+                          AI detected this as a quote request with {emailType.confidence} confidence
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              No unprocessed emails found
+              {searchTerm || filterType !== "all" 
+                ? "No emails found matching your filters." 
+                : "No unprocessed emails found"}
             </div>
           )}
         </div>
+        
+        {filteredEmails.length > 0 && (
+          <div className="mt-4 text-sm text-muted-foreground">
+            Showing {filteredEmails.length} of {(emails || []).length - processedEmails.length} unprocessed emails
+          </div>
+        )}
       </CardContent>
     </Card>
   );
