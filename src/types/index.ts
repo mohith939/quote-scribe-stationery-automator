@@ -63,28 +63,3 @@ export interface GoogleSheetsConfig {
   quotesSheetName: string;
   productsSheetName: string;
 }
-
-// New types for processing queue
-export interface ProcessingQueueItem {
-  id: string;
-  emailId: string;
-  from: string;
-  subject: string;
-  date: string;
-  status: 'pending' | 'processed' | 'failed';
-  confidence: 'high' | 'medium' | 'low' | 'none';
-  product?: string;
-  quantity?: number;
-}
-
-// Enhanced QuoteStatistics interface
-export interface QuoteStatistics {
-  totalQuotes: number;
-  pendingEmails: number;
-  quoteSuccessRate: number;
-  avgResponseTime: number; // in hours
-  changeFromPrevious: {
-    totalQuotes: number;
-    avgResponseTime: number; // can be negative (improvement)
-  };
-}
