@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
-import { Send, Eye, X, RefreshCw } from "lucide-react";
+import { Send, Eye, X, RefreshCw, Zap, Edit, Check, AlertTriangle } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,28 +19,28 @@ const mockPendingEmails: EmailMessage[] = [
     from: "john.doe@techcorp.com",
     subject: "Urgent: Need Digital Force Gauge Quote",
     body: "Hi, we need a quote for the ZTA-500N Digital Force Gauge. We're looking at ordering 2 units. Can you send pricing ASAP? This is for our quality control lab. Thanks!",
-    date: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+    date: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
   },
   {
     id: "email-2", 
     from: "procurement@labsolutions.in",
     subject: "Request for Quotation - Glass Thermometers",
-    body: "Dear Sir/Madam, We require quotation for Zeal England Glass Thermometer (Range: 10°C to 110°C). Quantity needed: 10 pieces. Please include your best pricing and delivery terms. Looking forward to your response.",
-    date: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+    body: "Dear Sir/Madam, We require quotation for Zeal England Glass Thermometer (Range: 10°C to 110°C). Quantity needed: 10 pieces. Please include your best pricing and delivery terms.",
+    date: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
   },
   {
     id: "email-3",
     from: "admin@metalworks.co.in", 
     subject: "Zero Plate Requirements",
-    body: "Hello, we are interested in purchasing zero plates for our NDT testing. Specifically need: - Zero Plate Non-Ferrous (3 units) - Zero Plate Ferrous (2 units). Please provide detailed quotation with technical specifications.",
-    date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), // 4 hours ago
+    body: "Hello, we are interested in purchasing zero plates for our NDT testing. Specifically need: - Zero Plate Non-Ferrous (3 units) - Zero Plate Ferrous (2 units). Please provide detailed quotation.",
+    date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
   },
   {
     id: "email-4",
     from: "quality@precisioneng.com",
     subject: "Metallic Plate Inquiry",
     body: "We need pricing for Zero microns metallic plate. Quantity: 5 pieces. Also, do you have any bulk discounts available? Please send your catalog as well.",
-    date: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(), // 6 hours ago
+    date: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
   }
 ];
 
@@ -49,11 +49,15 @@ export function ProcessingQueue() {
   const [emails, setEmails] = useState<EmailMessage[]>(mockPendingEmails);
   const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [isAutoSending, setIsAutoSending] = useState(false);
   const [quoteData, setQuoteData] = useState({
     product: "",
     quantity: 1,
     pricePerUnit: 0,
-    totalAmount: 0
+    totalAmount: 0,
+    emailBody: ""
   });
 
   const detectQuoteInfo = (email: EmailMessage) => {
@@ -61,7 +65,6 @@ export function ProcessingQueue() {
     const subject = email.subject.toLowerCase();
     const fullText = `${subject} ${body}`;
     
-    // Simple detection logic
     if (fullText.includes("zta-500n") || fullText.includes("digital force gauge")) {
       return {
         product: "ZTA-500N- Digital Force Gauge",
@@ -98,8 +101,7 @@ export function ProcessingQueue() {
       };
     }
     
-    // Check for general quote keywords
-    if (fullText.includes("quote") || fullText.includes("quotation") || fullText.includes("pricing") || fullText.includes("price")) {
+    if (fullText.includes("quote") || fullText.includes("quotation") || fullText.includes("pricing")) {
       return {
         product: "Unknown",
         isQuoteRequest: true,
@@ -114,42 +116,110 @@ export function ProcessingQueue() {
     };
   };
 
-  const handleSendQuote = (email: EmailMessage) => {
-    const detection = detectQuoteInfo(email);
+  const handleAutoGenerateAll = async () => {
+    setIsAutoGenerating(true);
+    let successCount = 0;
     
-    if (detection.product !== "Unknown") {
-      // Pre-populate quote data based on detection
-      const productPrices: Record<string, number> = {
-        "ZTA-500N- Digital Force Gauge": 83200.00,
-        "Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C": 750.00,
-        "zero plate Non-Ferrous": 1800.00,
-        "zero plate Ferrous": 1800.00,
-        "Zero microns metallic plate": 850.00
-      };
-      
-      const price = productPrices[detection.product] || 0;
-      setQuoteData({
-        product: detection.product,
-        quantity: 1,
-        pricePerUnit: price,
-        totalAmount: price
-      });
+    for (const email of emails) {
+      const detection = detectQuoteInfo(email);
+      if (detection.isQuoteRequest && detection.confidence !== "none") {
+        // Simulate auto-generation
+        await new Promise(resolve => setTimeout(resolve, 500));
+        successCount++;
+      }
     }
     
+    setIsAutoGenerating(false);
+    toast({
+      title: "Auto-Generation Complete",
+      description: `Generated quotes for ${successCount} emails automatically.`,
+    });
+  };
+
+  const handleAutoSendAll = async () => {
+    setIsAutoSending(true);
+    let sentCount = 0;
+    
+    for (const email of emails) {
+      const detection = detectQuoteInfo(email);
+      if (detection.isQuoteRequest && detection.confidence === "high") {
+        // Simulate sending
+        await new Promise(resolve => setTimeout(resolve, 300));
+        sentCount++;
+      }
+    }
+    
+    // Remove auto-sent emails
+    const remainingEmails = emails.filter(email => {
+      const detection = detectQuoteInfo(email);
+      return !(detection.isQuoteRequest && detection.confidence === "high");
+    });
+    
+    setEmails(remainingEmails);
+    setIsAutoSending(false);
+    
+    toast({
+      title: "Auto-Send Complete",
+      description: `Sent ${sentCount} high-confidence quotes automatically.`,
+    });
+  };
+
+  const handleEditEmail = (email: EmailMessage) => {
+    const detection = detectQuoteInfo(email);
+    
+    const productPrices: Record<string, number> = {
+      "ZTA-500N- Digital Force Gauge": 83200.00,
+      "Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C": 750.00,
+      "zero plate Non-Ferrous": 1800.00,
+      "zero plate Ferrous": 1800.00,
+      "Zero microns metallic plate": 850.00
+    };
+    
+    const price = productPrices[detection.product] || 1000;
+    const defaultBody = `Dear Customer,
+
+Thank you for your inquiry regarding ${detection.product || 'our products'}.
+
+We are pleased to provide you with the following quotation:
+
+Product: ${detection.product || 'Product Name'}
+Quantity: 1 units
+Unit Price: ₹${price.toFixed(2)}
+Total Amount: ₹${price.toFixed(2)}
+
+This quotation is valid for 30 days from the date of this email.
+
+Please feel free to contact us if you have any questions.
+
+Best regards,
+Your Company Name`;
+
+    setQuoteData({
+      product: detection.product || "",
+      quantity: 1,
+      pricePerUnit: price,
+      totalAmount: price,
+      emailBody: defaultBody
+    });
+    
     setSelectedEmail(email);
+    setShowEditDialog(true);
+  };
+
+  const handleSendQuote = (email: EmailMessage) => {
+    handleEditEmail(email);
     setShowQuoteDialog(true);
+    setShowEditDialog(false);
   };
 
   const handleConfirmQuote = () => {
     if (!selectedEmail) return;
     
-    // Simulate sending quote
     toast({
       title: "Quote Sent Successfully",
-      description: `Quote for ${quoteData.product} sent to ${selectedEmail.from}`,
+      description: `Quote sent to ${selectedEmail.from}`,
     });
     
-    // Remove email from queue
     setEmails(emails.filter(e => e.id !== selectedEmail.id));
     setShowQuoteDialog(false);
     setSelectedEmail(null);
@@ -168,23 +238,43 @@ export function ProcessingQueue() {
       title: "Refreshing Queue",
       description: "Checking for new emails requiring manual processing...",
     });
-    // In real implementation, this would fetch new emails
   };
 
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Processing Queue</CardTitle>
-            <CardDescription>
-              Emails requiring manual review and quote generation
-            </CardDescription>
+        <CardHeader>
+          <div className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Processing Queue</CardTitle>
+              <CardDescription>
+                Emails requiring manual review and quote generation
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleAutoGenerateAll}
+                disabled={isAutoGenerating}
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                {isAutoGenerating ? "Generating..." : "Auto Generate"}
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={handleAutoSendAll}
+                disabled={isAutoSending}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {isAutoSending ? "Sending..." : "Auto Send All"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -241,13 +331,18 @@ export function ProcessingQueue() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => {
-                          setSelectedEmail(email);
-                          // Show email preview
-                        }}
+                        onClick={() => setSelectedEmail(email)}
                       >
                         <Eye className="h-4 w-4 mr-1" />
                         View
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditEmail(email)}
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit Quote
                       </Button>
                       <Button 
                         variant="outline" 
@@ -280,13 +375,13 @@ export function ProcessingQueue() {
         </CardContent>
       </Card>
 
-      {/* Quote Dialog */}
-      <Dialog open={showQuoteDialog} onOpenChange={setShowQuoteDialog}>
+      {/* Edit Quote Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Generate Quote</DialogTitle>
+            <DialogTitle>Edit Quote Response</DialogTitle>
             <DialogDescription>
-              Review and send quote for: {selectedEmail?.from}
+              Customize the quote before sending to: {selectedEmail?.from}
             </DialogDescription>
           </DialogHeader>
           
@@ -303,21 +398,11 @@ export function ProcessingQueue() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="product">Product</Label>
-                  <Select 
+                  <Input
+                    id="product"
                     value={quoteData.product}
-                    onValueChange={(value) => setQuoteData({...quoteData, product: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ZTA-500N- Digital Force Gauge">ZTA-500N- Digital Force Gauge</SelectItem>
-                      <SelectItem value="Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C">Glass Thermometer Range</SelectItem>
-                      <SelectItem value="zero plate Non-Ferrous">Zero Plate Non-Ferrous</SelectItem>
-                      <SelectItem value="zero plate Ferrous">Zero Plate Ferrous</SelectItem>
-                      <SelectItem value="Zero microns metallic plate">Zero Microns Metallic Plate</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setQuoteData({...quoteData, product: e.target.value})}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="quantity">Quantity</Label>
@@ -372,28 +457,49 @@ export function ProcessingQueue() {
                 <Textarea
                   id="emailBody"
                   rows={8}
-                  value={`Dear Customer,
-
-Thank you for your inquiry regarding ${quoteData.product}.
-
-We are pleased to provide you with the following quotation:
-
-Product: ${quoteData.product}
-Quantity: ${quoteData.quantity} units
-Unit Price: ₹${quoteData.pricePerUnit.toFixed(2)}
-Total Amount: ₹${quoteData.totalAmount.toFixed(2)}
-
-This quotation is valid for 30 days from the date of this email.
-
-Please feel free to contact us if you have any questions.
-
-Best regards,
-Your Company Name`}
+                  value={quoteData.emailBody}
+                  onChange={(e) => setQuoteData({...quoteData, emailBody: e.target.value})}
                   className="font-mono text-sm"
                 />
               </div>
             </div>
           )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              setShowEditDialog(false);
+              setShowQuoteDialog(true);
+            }}>
+              <Check className="h-4 w-4 mr-2" />
+              Preview & Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Quote Confirmation Dialog */}
+      <Dialog open={showQuoteDialog} onOpenChange={setShowQuoteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Send Quote</DialogTitle>
+            <DialogDescription>
+              Review and confirm sending quote to {selectedEmail?.from}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3">
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-sm font-medium">Quote Summary:</div>
+              <div className="text-sm mt-1">
+                Product: {quoteData.product}<br/>
+                Quantity: {quoteData.quantity} units<br/>
+                Total: ₹{quoteData.totalAmount.toFixed(2)}
+              </div>
+            </div>
+          </div>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowQuoteDialog(false)}>
