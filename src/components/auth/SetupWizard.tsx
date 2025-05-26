@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -202,7 +202,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     {index < currentStep ? (
                       <CheckCircle className="h-5 w-5" />
                     ) : (
-                      <step.icon className="h-5 w-5" />
+                      React.createElement(step.icon, { className: "h-5 w-5" })
                     )}
                   </div>
                   {index < steps.length - 1 && (
