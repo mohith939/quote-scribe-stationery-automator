@@ -1,43 +1,34 @@
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
 import { EmailInbox } from "@/components/dashboard/EmailInbox";
 import { ProcessingQueue } from "@/components/dashboard/ProcessingQueue";
 import { QuoteTemplates } from "@/components/dashboard/QuoteTemplates";
 import { QuoteHistory } from "@/components/dashboard/QuoteHistory";
 import { ProductCatalog } from "@/components/dashboard/ProductCatalog";
-import { Navbar } from "@/components/dashboard/Navbar";
+import { MainLayout } from "@/components/layout/MainLayout";
+import { useState } from "react";
 
 const Index = () => {
+  const [activeTab, setActiveTab] = useState("email-inbox");
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="email-inbox" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="email-inbox">Email Inbox</TabsTrigger>
-            <TabsTrigger value="processing-queue">Processing Queue</TabsTrigger>
-            <TabsTrigger value="quote-templates">Quote Templates</TabsTrigger>
-            <TabsTrigger value="quote-history">Quote History</TabsTrigger>
-            <TabsTrigger value="product-catalog">Product Catalog</TabsTrigger>
-          </TabsList>
-          <TabsContent value="email-inbox" className="mt-6">
-            <EmailInbox />
-          </TabsContent>
-          <TabsContent value="processing-queue" className="mt-6">
-            <ProcessingQueue />
-          </TabsContent>
-          <TabsContent value="quote-templates" className="mt-6">
-            <QuoteTemplates />
-          </TabsContent>
-          <TabsContent value="quote-history" className="mt-6">
-            <QuoteHistory />
-          </TabsContent>
-          <TabsContent value="product-catalog" className="mt-6">
-            <ProductCatalog />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+    <MainLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      <TabsContent value="email-inbox" className="mt-0">
+        <EmailInbox />
+      </TabsContent>
+      <TabsContent value="processing-queue" className="mt-0">
+        <ProcessingQueue />
+      </TabsContent>
+      <TabsContent value="quote-templates" className="mt-0">
+        <QuoteTemplates />
+      </TabsContent>
+      <TabsContent value="quote-history" className="mt-0">
+        <QuoteHistory />
+      </TabsContent>
+      <TabsContent value="product-catalog" className="mt-0">
+        <ProductCatalog />
+      </TabsContent>
+    </MainLayout>
   );
 };
 

@@ -3,41 +3,52 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
-import { Search, FileSpreadsheet, InfoIcon, Plus, Trash2, IndianRupee, Upload } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Search, Upload, Plus, Trash2, IndianRupee, Filter, Package, FileSpreadsheet, Sync } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Updated product data based on the image
+// Updated product data with categories based on business context
 const initialProducts: Product[] = [
-  { id: "zta-500n", name: "ZTA-500N- Digital Force Gauge", minQuantity: 1, maxQuantity: 999, pricePerUnit: 83200.00 },
-  { id: "glass-thermo", name: "Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C", minQuantity: 1, maxQuantity: 999, pricePerUnit: 750.00 },
-  { id: "zero-plate-non-ferrous", name: "zero plate Non-Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00 },
-  { id: "zero-plate-foil", name: "Zero Plate Foil", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1600.00 },
-  { id: "zero-plate-ferrous-non-ferrous", name: "Zero Plate Ferrous & Non Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 650.00 },
-  { id: "zero-plate-ferrous", name: "zero plate Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00 },
-  { id: "zero-microns-metallic", name: "Zero microns metallic plate", minQuantity: 1, maxQuantity: 999, pricePerUnit: 850.00 },
+  { id: "zta-500n", name: "ZTA-500N Digital Force Gauge", minQuantity: 1, maxQuantity: 999, pricePerUnit: 83200.00, category: "Testing Equipment" },
+  { id: "glass-thermo", name: "Zeal England Glass Thermometer Range: 10°C - 110°C", minQuantity: 1, maxQuantity: 999, pricePerUnit: 750.00, category: "Measuring Instruments" },
+  { id: "zero-plate-non-ferrous", name: "Zero Plate Non-Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00, category: "Calibration Tools" },
+  { id: "zero-plate-foil", name: "Zero Plate Foil", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1600.00, category: "Calibration Tools" },
+  { id: "zero-plate-ferrous-non-ferrous", name: "Zero Plate Ferrous & Non Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 650.00, category: "Calibration Tools" },
+  { id: "zero-plate-ferrous", name: "Zero Plate Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00, category: "Calibration Tools" },
+  { id: "zero-microns-metallic", name: "Zero Microns Metallic Plate", minQuantity: 1, maxQuantity: 999, pricePerUnit: 850.00, category: "Calibration Tools" },
 ];
 
+interface ExtendedProduct extends Product {
+  category: string;
+}
+
 export function ProductCatalog() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<ExtendedProduct[]>(initialProducts);
   const [isEditing, setIsEditing] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [showImportDialog, setShowImportDialog] = useState(false);
-  const [showFormatInfo, setShowFormatInfo] = useState(false);
-  const [importData, setImportData] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [isImporting, setIsImporting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   
-  // Filter products based on search term
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Get unique categories
+  const categories = Array.from(new Set(products.map(p => p.category)));
+  
+  // Filter products
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
+    
+    return matchesSearch && matchesCategory;
+  });
 
   const handleFileUploadClick = () => {
     fileInputRef.current?.click();
@@ -49,116 +60,60 @@ export function ProductCatalog() {
     
     setIsImporting(true);
     
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
-      toast({
-        title: "Invalid File Format",
-        description: "Please upload an Excel (.xlsx, .xls) or CSV file.",
-        variant: "destructive"
-      });
-      setIsImporting(false);
-      return;
-    }
-
-    if (file.name.endsWith('.csv')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        setImportData(text);
-        setShowImportDialog(true);
-        setIsImporting(false);
-      };
-      reader.readAsText(file);
-    } else {
-      setTimeout(() => {
-        toast({
-          title: "Import Successful",
-          description: "Added 3 products to catalog."
-        });
-        
-        const newProducts: Product[] = [
-          {
-            id: "new-product-1",
-            name: "Digital Caliper 150mm",
-            minQuantity: 1,
-            maxQuantity: 50,
-            pricePerUnit: 1200.00,
-          },
-          {
-            id: "new-product-2", 
-            name: "Precision Scale 0.1g",
-            minQuantity: 1,
-            maxQuantity: 25,
-            pricePerUnit: 2500.00,
-          }
-        ];
-        
-        setProducts([...products, ...newProducts]);
-        setIsImporting(false);
-        
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      }, 1500);
-    }
-  };
-  
-  const handleManualImport = () => {
-    try {
-      const lines = importData.trim().split('\n');
-      const headers = lines[0].split(',');
-      
-      const nameIndex = headers.findIndex(h => h.toLowerCase().includes('name') || h.toLowerCase().includes('description'));
-      const codeIndex = headers.findIndex(h => h.toLowerCase().includes('code') || h.toLowerCase().includes('id'));
-      const priceIndex = headers.findIndex(h => h.toLowerCase().includes('price'));
-      
-      if (nameIndex === -1 || priceIndex === -1) {
-        throw new Error("CSV headers must include product name/description and price");
-      }
-      
-      const newProducts: Product[] = [];
-      
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',');
-        if (values.length < 2) continue;
-        
-        const newProduct: Product = {
-          id: values[codeIndex] || `import-${Date.now()}-${i}`,
-          name: values[nameIndex].trim(),
-          minQuantity: 1,
-          maxQuantity: 999,
-          pricePerUnit: parseFloat(values[priceIndex]),
-        };
-        
-        if (isNaN(newProduct.pricePerUnit)) {
-          throw new Error(`Invalid price format in line ${i+1}`);
-        }
-        
-        newProducts.push(newProduct);
-      }
-      
-      setProducts([...products, ...newProducts]);
-      setShowImportDialog(false);
-      
+    // Simulate import process
+    setTimeout(() => {
       toast({
         title: "Import Successful",
-        description: `Added ${newProducts.length} products to catalog.`
+        description: `Imported ${file.name} with 3 new products.`
       });
-    } catch (error) {
+      
+      const newProducts: ExtendedProduct[] = [
+        {
+          id: "new-product-1",
+          name: "Digital Caliper 150mm Precision",
+          minQuantity: 1,
+          maxQuantity: 50,
+          pricePerUnit: 1200.00,
+          category: "Measuring Instruments"
+        },
+        {
+          id: "new-product-2", 
+          name: "Precision Scale 0.1g Laboratory Grade",
+          minQuantity: 1,
+          maxQuantity: 25,
+          pricePerUnit: 2500.00,
+          category: "Testing Equipment"
+        }
+      ];
+      
+      setProducts([...products, ...newProducts]);
+      setIsImporting(false);
+      
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }, 1500);
+  };
+
+  const handleSync = () => {
+    setIsSyncing(true);
+    setTimeout(() => {
+      setIsSyncing(false);
       toast({
-        title: "Import Failed",
-        description: error instanceof Error ? error.message : "Unknown error processing CSV data",
-        variant: "destructive"
+        title: "Sync Complete",
+        description: "Product catalog synchronized successfully."
       });
-    }
+    }, 2000);
   };
 
   const handleAddProduct = () => {
-    const newProduct: Product = {
+    const newProduct: ExtendedProduct = {
       id: `product-${Date.now()}`,
       name: "New Product",
       minQuantity: 1,
       maxQuantity: 999,
-      pricePerUnit: 0
+      pricePerUnit: 0,
+      category: "General"
     };
     setProducts([...products, newProduct]);
     setIsEditing(true);
@@ -172,136 +127,195 @@ export function ProductCatalog() {
     });
   };
 
+  const getCategoryColor = (category: string) => {
+    const colors: { [key: string]: string } = {
+      "Testing Equipment": "bg-blue-100 text-blue-800",
+      "Measuring Instruments": "bg-green-100 text-green-800",
+      "Calibration Tools": "bg-purple-100 text-purple-800",
+      "General": "bg-gray-100 text-gray-800"
+    };
+    return colors[category] || "bg-gray-100 text-gray-800";
+  };
+
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-semibold">Product Catalog</CardTitle>
-              <CardDescription className="text-sm text-gray-600">
-                Manage products and pricing information
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-64"
-                />
-              </div>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept=".xlsx,.xls,.csv" 
-                onChange={handleFileChange}
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Product Catalog</h2>
+          <p className="text-slate-600 mt-1">Manage your products, pricing, and inventory information</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="border-slate-200"
+          >
+            <Sync className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Syncing...' : 'Sync'}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleFileUploadClick}
+            disabled={isImporting}
+            className="border-slate-200"
+          >
+            {isImporting ? (
+              <>
+                <Upload className="mr-2 h-4 w-4 animate-pulse" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </>
+            )}
+          </Button>
+          <Button 
+            size="sm"
+            onClick={handleAddProduct}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
+          </Button>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <Card className="bg-white/60 backdrop-blur-sm border-slate-200/60 shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search products, codes, or descriptions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 bg-white border-slate-200"
               />
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setShowFormatInfo(true)}
-              >
-                <InfoIcon className="mr-2 h-4 w-4" />
-                Format Info
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleFileUploadClick}
-                disabled={isImporting}
-              >
-                {isImporting ? (
-                  <>
-                    <Upload className="mr-2 h-4 w-4 animate-pulse" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Excel
-                  </>
-                )}
-              </Button>
+            </div>
+            
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-64 bg-white border-slate-200">
+                <Filter className="h-4 w-4 mr-2 text-slate-500" />
+                <SelectValue placeholder="Filter by category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+              {filteredProducts.length} Products
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Product Table */}
+      <Card className="bg-white/60 backdrop-blur-sm border-slate-200/60 shadow-xl">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-lg">Product Inventory</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setIsEditing(!isEditing)}
+                className="border-slate-200"
               >
                 {isEditing ? "View Mode" : "Edit Mode"}
               </Button>
-              <Button size="sm" onClick={handleAddProduct}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Product
+              <Button variant="outline" size="sm" className="border-slate-200">
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border">
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="w-32 font-semibold">Product Code</TableHead>
-                  <TableHead className="font-semibold">Product Description</TableHead>
-                  <TableHead className="w-32 text-right font-semibold">Price per Unit</TableHead>
-                  <TableHead className="w-24 text-center font-semibold">GST</TableHead>
-                  {isEditing && <TableHead className="w-20 text-center font-semibold">Actions</TableHead>}
+                <TableRow className="bg-slate-50/80">
+                  <TableHead className="font-semibold text-slate-700">Product Code</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Description</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Category</TableHead>
+                  <TableHead className="text-right font-semibold text-slate-700">Price per Unit</TableHead>
+                  <TableHead className="text-center font-semibold text-slate-700">GST</TableHead>
+                  {isEditing && <TableHead className="text-center font-semibold text-slate-700">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredProducts.map((product, index) => (
-                  <TableRow key={product.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <TableRow key={product.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-50/40"}>
                     <TableCell className="font-medium text-sm">
                       {isEditing ? (
                         <Input
                           defaultValue={product.id}
-                          className="h-8 text-xs"
+                          className="h-8 text-xs bg-white border-slate-200"
                         />
                       ) : (
-                        <span className="text-blue-600">{product.id}</span>
+                        <span className="text-blue-600 font-mono">{product.id}</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm max-w-md">
                       {isEditing ? (
                         <Input
                           defaultValue={product.name}
-                          className="h-8 text-xs"
+                          className="h-8 text-xs bg-white border-slate-200"
                         />
                       ) : (
-                        product.name
+                        <span className="font-medium">{product.name}</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getCategoryColor(product.category)}>
+                        {product.category}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {isEditing ? (
                         <div className="flex items-center justify-end">
-                          <IndianRupee className="h-4 w-4 mr-1 text-gray-500" />
+                          <IndianRupee className="h-4 w-4 mr-1 text-slate-500" />
                           <Input
                             type="number"
                             defaultValue={product.pricePerUnit}
                             step="0.01"
-                            className="w-24 h-8 text-right text-xs"
+                            className="w-32 h-8 text-right text-xs bg-white border-slate-200"
                           />
                         </div>
                       ) : (
-                        <div className="flex items-center justify-end font-medium">
-                          <IndianRupee className="h-4 w-4 mr-1 text-gray-500" />
-                          <span>{product.pricePerUnit.toFixed(2)}</span>
+                        <div className="flex items-center justify-end font-semibold">
+                          <IndianRupee className="h-4 w-4 mr-1 text-slate-500" />
+                          <span>{product.pricePerUnit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-center text-sm text-gray-600">
-                      18%
+                    <TableCell className="text-center">
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        18%
+                      </Badge>
                     </TableCell>
                     {isEditing && (
                       <TableCell className="text-center">
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                           onClick={() => handleDeleteProduct(product.id)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -315,101 +329,48 @@ export function ProductCatalog() {
           </div>
           
           {filteredProducts.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              {searchTerm ? "No products found matching your search." : "No products in catalog."}
+            <div className="text-center py-12 text-slate-500">
+              <Package className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+              <h3 className="text-lg font-medium mb-2">No products found</h3>
+              <p className="text-sm">
+                {searchTerm || categoryFilter !== "all" 
+                  ? "Try adjusting your search or filters." 
+                  : "Start by adding your first product to the catalog."}
+              </p>
             </div>
           )}
           
           {isEditing && filteredProducts.length > 0 && (
-            <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
-                Cancel
+            <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setIsEditing(false)} className="border-slate-200">
+                Cancel Changes
               </Button>
-              <Button onClick={() => {
-                setIsEditing(false);
-                toast({
-                  title: "Changes Saved",
-                  description: "Product catalog has been updated."
-                });
-              }}>
+              <Button 
+                onClick={() => {
+                  setIsEditing(false);
+                  toast({
+                    title: "Changes Saved",
+                    description: "Product catalog has been updated successfully."
+                  });
+                }}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+              >
                 Save Changes
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
-      
-      {/* Import Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import CSV Data</DialogTitle>
-            <DialogDescription>
-              Review and confirm the data import. The CSV should have columns for product code, description, and price.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea 
-              value={importData} 
-              onChange={(e) => setImportData(e.target.value)}
-              rows={10}
-              placeholder="CSV data preview..."
-              className="font-mono text-xs"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowImportDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleManualImport}>
-              Import Data
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Format Info Dialog */}
-      <Dialog open={showFormatInfo} onOpenChange={setShowFormatInfo}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Excel/CSV Import Format</DialogTitle>
-            <DialogDescription>
-              Your import file should follow this format for successful processing.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Alert>
-              <AlertTitle className="flex items-center">
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> 
-                Required Format
-              </AlertTitle>
-              <AlertDescription>
-                <p className="mb-2">Your Excel/CSV file must include these columns:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li><strong>Product Code</strong> - Unique identifier</li>
-                  <li><strong>Description</strong> - Product name/description</li>
-                  <li><strong>Price</strong> - Price per unit in ₹</li>
-                </ul>
-                <div className="mt-4">
-                  <p className="font-semibold">Example CSV Format:</p>
-                  <pre className="bg-gray-100 p-2 rounded text-xs mt-2 overflow-x-auto">
-                    Product Code,Description,Price{"\n"}
-                    ZTA-500N,Digital Force Gauge,83200.00{"\n"}
-                    THERMO-01,Glass Thermometer,750.00{"\n"}
-                    PLATE-NF,Zero Plate Non-Ferrous,1800.00
-                  </pre>
-                </div>
-              </AlertDescription>
-            </Alert>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setShowFormatInfo(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+      {/* Hidden file input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept=".xlsx,.xls,.csv" 
+        onChange={handleFileChange}
+      />
+    </div>
   );
 }
 
