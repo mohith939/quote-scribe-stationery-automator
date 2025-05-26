@@ -21,8 +21,6 @@ import {
   Package, 
   User, 
   LogOut,
-  Moon,
-  Sun,
   RefreshCw,
   Plus
 } from "lucide-react";
@@ -36,7 +34,6 @@ interface MainLayoutProps {
 export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps) {
   const { toast } = useToast();
   const { user, logout } = useAuth();
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
 
   const handleRefreshEmails = () => {
@@ -53,15 +50,6 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
     });
   };
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
-    toast({
-      title: `${!isDarkMode ? 'Dark' : 'Light'} mode enabled`,
-      description: "Theme preferences saved",
-    });
-  };
-
   const handleViewProfile = () => {
     setShowProfileDialog(true);
   };
@@ -75,7 +63,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 ${isDarkMode ? 'dark' : ''}`}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
       {/* Top Navigation Bar */}
       <div className="border-b border-slate-200/60 bg-white/80 backdrop-blur-xl sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-6">
@@ -146,10 +134,6 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
                   </div>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={toggleDarkMode}>
-                  {isDarkMode ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-                  <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleViewProfile}>
                   <User className="mr-2 h-4 w-4" />
                   <span>View Profile</span>

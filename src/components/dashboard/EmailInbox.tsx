@@ -3,9 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { mockEmails } from "@/data/mockData";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Search, Filter, Edit, ArrowRight } from "lucide-react";
+import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Search, Filter, Edit, ArrowRight, Zap } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ export function EmailInbox() {
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(false);
+  const [autoSendEnabled, setAutoSendEnabled] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [showReclassifyDialog, setShowReclassifyDialog] = useState(false);
@@ -148,6 +149,63 @@ export function EmailInbox() {
     }
   };
 
+  const handleSendQuote = async (email: EmailMessage) => {
+    setProcessingEmailId(email.id);
+    
+    try {
+      // Simulate quote generation and sending
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      toast({
+        title: "Quote Sent Successfully",
+        description: `PDF quotation sent to ${email.from}`,
+      });
+      
+      setProcessedEmails(prev => [...prev, email.id]);
+      setProcessingEmailId(null);
+    } catch (error) {
+      console.error("Error sending quote:", error);
+      toast({
+        title: "Error Sending Quote",
+        description: "Failed to send the quote. Please try again.",
+        variant: "destructive"
+      });
+      setProcessingEmailId(null);
+    }
+  };
+
+  const handleAutoSendAll = async () => {
+    const quoteEmails = filteredEmails.filter(email => {
+      const emailType = detectEmailType(email);
+      return emailType.type === 'quote' && emailType.confidence !== 'low';
+    });
+
+    if (quoteEmails.length === 0) {
+      toast({
+        title: "No Eligible Emails",
+        description: "No high-confidence quote requests found for auto-sending.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    toast({
+      title: "Auto-Sending Quotes",
+      description: `Processing ${quoteEmails.length} quote requests automatically...`,
+    });
+
+    for (const email of quoteEmails) {
+      await handleSendQuote(email);
+      // Small delay between sends
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    toast({
+      title: "Auto-Send Complete",
+      description: `Successfully sent ${quoteEmails.length} quotes automatically.`,
+    });
+  };
+
   const handleReclassifyEmail = (email: EmailMessage) => {
     setSelectedEmailForReclassify(email);
     setShowReclassifyDialog(true);
@@ -179,6 +237,11 @@ export function EmailInbox() {
       const emailType = detectEmailType(email);
       return matchesSearch && emailType.type === filterType;
     });
+
+  const quoteRequestsCount = filteredEmails.filter(email => {
+    const emailType = detectEmailType(email);
+    return emailType.type === 'quote' && emailType.confidence !== 'low';
+  }).length;
 
   return (
     <>
@@ -212,6 +275,15 @@ export function EmailInbox() {
                   )}
                 </Label>
               </div>
+              {quoteRequestsCount > 0 && (
+                <Button 
+                  onClick={handleAutoSendAll}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  Auto Send All ({quoteRequestsCount})
+                </Button>
+              )}
               <Button 
                 variant="outline" 
                 size="icon" 
@@ -271,6 +343,7 @@ export function EmailInbox() {
             ) : filteredEmails.length > 0 ? (
               filteredEmails.map((email) => {
                 const emailType = detectEmailType(email);
+                const isProcessing = processingEmailId === email.id;
                 return (
                   <div
                     key={email.id}
@@ -312,18 +385,42 @@ export function EmailInbox() {
                           variant="outline" 
                           size="sm" 
                           onClick={() => handleReclassifyEmail(email)}
+                          disabled={isProcessing}
                         >
                           <Edit className="mr-2 h-4 w-4" />
                           Mark as Quote
                         </Button>
                       )}
+                      
+                      {emailType.type === 'quote' && (
+                        <Button 
+                          variant="default"
+                          size="sm" 
+                          onClick={() => handleSendQuote(email)}
+                          disabled={isProcessing}
+                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                        >
+                          {isProcessing ? (
+                            <span className="flex items-center">
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              Sending Quote...
+                            </span>
+                          ) : (
+                            <span className="flex items-center">
+                              <Send className="mr-2 h-4 w-4" />
+                              Send Quote
+                            </span>
+                          )}
+                        </Button>
+                      )}
+                      
                       <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={() => handleProcessManually(email)}
-                        disabled={processingEmailId === email.id}
+                        disabled={isProcessing}
                       >
-                        {processingEmailId === email.id ? (
+                        {isProcessing && emailType.type !== 'quote' ? (
                           <span className="flex items-center">
                             <FileText className="mr-2 h-4 w-4 animate-pulse" />
                             Processing...
@@ -337,7 +434,7 @@ export function EmailInbox() {
                       </Button>
                     </div>
                     
-                    {processingEmailId !== email.id && emailType.type === 'quote' && (
+                    {!isProcessing && emailType.type === 'quote' && (
                       <div className="pt-2 text-xs">
                         <div className="flex items-center">
                           <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
@@ -362,6 +459,11 @@ export function EmailInbox() {
           {filteredEmails.length > 0 && (
             <div className="mt-4 text-sm text-muted-foreground">
               Showing {filteredEmails.length} of {(emails || []).length - processedEmails.length} unprocessed emails
+              {quoteRequestsCount > 0 && (
+                <span className="ml-4 text-blue-600 font-medium">
+                  • {quoteRequestsCount} ready for auto-quote
+                </span>
+              )}
             </div>
           )}
         </CardContent>
