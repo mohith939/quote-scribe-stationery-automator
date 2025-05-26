@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -11,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { ProfileDialog } from "@/components/profile/ProfileDialog";
 import { 
   Mail, 
   Settings, 
@@ -37,6 +37,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
   const { toast } = useToast();
   const { user, logout } = useAuth();
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
 
   const handleRefreshEmails = () => {
     toast({
@@ -54,10 +55,15 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
+    document.documentElement.classList.toggle('dark');
     toast({
-      title: `${isDarkMode ? 'Light' : 'Dark'} mode enabled`,
+      title: `${!isDarkMode ? 'Dark' : 'Light'} mode enabled`,
       description: "Theme preferences saved",
     });
+  };
+
+  const handleViewProfile = () => {
+    setShowProfileDialog(true);
   };
 
   const handleLogout = () => {
@@ -69,7 +75,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 ${isDarkMode ? 'dark' : ''}`}>
       {/* Top Navigation Bar */}
       <div className="border-b border-slate-200/60 bg-white/80 backdrop-blur-xl sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-6">
@@ -144,7 +150,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
                   {isDarkMode ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleViewProfile}>
                   <User className="mr-2 h-4 w-4" />
                   <span>View Profile</span>
                 </DropdownMenuItem>
@@ -214,6 +220,9 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
           </p>
         </div>
       </div>
+
+      {/* Profile Dialog */}
+      <ProfileDialog open={showProfileDialog} onOpenChange={setShowProfileDialog} />
     </div>
   );
 }
