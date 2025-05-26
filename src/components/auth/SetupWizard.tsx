@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, ArrowRight, ArrowLeft, Mail, Database, FileText, Settings } from "lucide-react";
 
 interface SetupWizardProps {
@@ -190,26 +190,27 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         {/* Progress Steps */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            {steps.map((step, index) => (
-              <div key={index} className="flex items-center">
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-                  index <= currentStep 
-                    ? 'border-blue-600 bg-blue-600 text-white' 
-                    : 'border-slate-300 bg-white text-slate-400'
-                }`}>
-                  {index < currentStep ? (
-                    <CheckCircle className="h-5 w-5" />
-                  ) : (
-                    <step.icon className="h-5 w-5" />
+            {steps.map((step, index) => {
+              const stepIconClasses = index <= currentStep 
+                ? 'border-blue-600 bg-blue-600 text-white' 
+                : 'border-slate-300 bg-white text-slate-400';
+              const connectorClasses = index < currentStep ? 'bg-blue-600' : 'bg-slate-300';
+              
+              return (
+                <div key={index} className="flex items-center">
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${stepIconClasses}`}>
+                    {index < currentStep ? (
+                      <CheckCircle className="h-5 w-5" />
+                    ) : (
+                      <step.icon className="h-5 w-5" />
+                    )}
+                  </div>
+                  {index < steps.length - 1 && (
+                    <div className={`w-24 h-0.5 ml-4 ${connectorClasses}`} />
                   )}
                 </div>
-                {index < steps.length - 1 && (
-                  <div className={`w-24 h-0.5 ml-4 ${
-                    index < currentStep ? 'bg-blue-600' : 'bg-slate-300'
-                  }`} />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-4">
             <h2 className="text-xl font-semibold text-slate-800">
