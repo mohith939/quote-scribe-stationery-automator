@@ -1,10 +1,10 @@
-
 export interface Product {
   id: string;
   name: string;
   minQuantity: number;
   maxQuantity: number;
   pricePerUnit: number;
+  category: string;
 }
 
 export interface QuoteLog {

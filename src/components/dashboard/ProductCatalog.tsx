@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
-import { Search, Upload, Plus, Trash2, IndianRupee, Filter, Package, FileSpreadsheet, Sync } from "lucide-react";
+import { Search, Upload, Plus, Trash2, IndianRupee, Filter, Package, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Updated product data with categories based on business context
@@ -21,12 +21,8 @@ const initialProducts: Product[] = [
   { id: "zero-microns-metallic", name: "Zero Microns Metallic Plate", minQuantity: 1, maxQuantity: 999, pricePerUnit: 850.00, category: "Calibration Tools" },
 ];
 
-interface ExtendedProduct extends Product {
-  category: string;
-}
-
 export function ProductCatalog() {
-  const [products, setProducts] = useState<ExtendedProduct[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>(initialProducts);
   const [isEditing, setIsEditing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -67,7 +63,7 @@ export function ProductCatalog() {
         description: `Imported ${file.name} with 3 new products.`
       });
       
-      const newProducts: ExtendedProduct[] = [
+      const newProducts: Product[] = [
         {
           id: "new-product-1",
           name: "Digital Caliper 150mm Precision",
@@ -107,7 +103,7 @@ export function ProductCatalog() {
   };
 
   const handleAddProduct = () => {
-    const newProduct: ExtendedProduct = {
+    const newProduct: Product = {
       id: `product-${Date.now()}`,
       name: "New Product",
       minQuantity: 1,
@@ -153,7 +149,7 @@ export function ProductCatalog() {
             disabled={isSyncing}
             className="border-slate-200"
           >
-            <Sync className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
             {isSyncing ? 'Syncing...' : 'Sync'}
           </Button>
           <Button 
