@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { 
   Mail, 
   Settings, 
@@ -34,6 +35,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps) {
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const handleRefreshEmails = () => {
@@ -55,6 +57,14 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
     toast({
       title: `${isDarkMode ? 'Light' : 'Dark'} mode enabled`,
       description: "Theme preferences saved",
+    });
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out.",
     });
   };
 
@@ -104,9 +114,9 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-9 w-9 ring-2 ring-slate-200">
-                    <AvatarImage src="/placeholder.svg" alt="User" />
+                    <AvatarImage src={user?.avatar} alt={user?.name} />
                     <AvatarFallback className="bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700">
-                      JD
+                      {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -115,16 +125,16 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
                 <div className="flex flex-col space-y-2 p-2">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12">
-                      <AvatarImage src="/placeholder.svg" alt="User" />
+                      <AvatarImage src={user?.avatar} alt={user?.name} />
                       <AvatarFallback className="bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700">
-                        JD
+                        {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
-                      <p className="text-sm font-medium">John Doe</p>
-                      <p className="text-xs text-slate-500">john@company.com</p>
+                      <p className="text-sm font-medium">{user?.name}</p>
+                      <p className="text-xs text-slate-500">{user?.email}</p>
                       <Badge variant="secondary" className="w-fit text-xs mt-1">
-                        Admin
+                        {user?.role}
                       </Badge>
                     </div>
                   </div>
@@ -139,7 +149,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
                   <span>View Profile</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600">
+                <DropdownMenuItem className="text-red-600" onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Logout</span>
                 </DropdownMenuItem>
