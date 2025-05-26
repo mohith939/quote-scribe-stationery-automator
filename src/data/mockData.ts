@@ -1,4 +1,3 @@
-
 import { Product, QuoteLog, EmailMessage } from "@/types";
 
 // Mock product catalog data
@@ -9,6 +8,7 @@ export const mockProducts: Product[] = [
     minQuantity: 1,
     maxQuantity: 499,
     pricePerUnit: 0.45,
+    category: "Paper Products",
   },
   {
     id: "2",
@@ -16,6 +16,7 @@ export const mockProducts: Product[] = [
     minQuantity: 500,
     maxQuantity: 999,
     pricePerUnit: 0.40,
+    category: "Paper Products",
   },
   {
     id: "3",
@@ -23,6 +24,7 @@ export const mockProducts: Product[] = [
     minQuantity: 1000,
     maxQuantity: 4999,
     pricePerUnit: 0.35,
+    category: "Paper Products",
   },
   {
     id: "4",
@@ -30,6 +32,7 @@ export const mockProducts: Product[] = [
     minQuantity: 5000,
     maxQuantity: 10000,
     pricePerUnit: 0.30,
+    category: "Paper Products",
   },
   {
     id: "5",
@@ -37,6 +40,7 @@ export const mockProducts: Product[] = [
     minQuantity: 1,
     maxQuantity: 99,
     pricePerUnit: 1.20,
+    category: "Writing Instruments",
   },
   {
     id: "6",
@@ -44,6 +48,7 @@ export const mockProducts: Product[] = [
     minQuantity: 100,
     maxQuantity: 499,
     pricePerUnit: 1.00,
+    category: "Writing Instruments",
   },
   {
     id: "7",
@@ -51,6 +56,7 @@ export const mockProducts: Product[] = [
     minQuantity: 500,
     maxQuantity: 1000,
     pricePerUnit: 0.85,
+    category: "Writing Instruments",
   },
   {
     id: "8",
@@ -58,6 +64,7 @@ export const mockProducts: Product[] = [
     minQuantity: 1,
     maxQuantity: 49,
     pricePerUnit: 8.50,
+    category: "Office Supplies",
   },
   {
     id: "9",
@@ -65,6 +72,7 @@ export const mockProducts: Product[] = [
     minQuantity: 50,
     maxQuantity: 200,
     pricePerUnit: 7.25,
+    category: "Office Supplies",
   },
 ];
 
