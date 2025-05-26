@@ -224,7 +224,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         <Card className="backdrop-blur-xl bg-white/80 border-slate-200/60 shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <steps[currentStep].icon className="h-5 w-5 text-blue-600" />
+              {React.createElement(steps[currentStep].icon, { className: "h-5 w-5 text-blue-600" })}
               {steps[currentStep].title}
             </CardTitle>
             <CardDescription>
