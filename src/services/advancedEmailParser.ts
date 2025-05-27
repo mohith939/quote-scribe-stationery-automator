@@ -2,6 +2,8 @@ import { EmailMessage, Product } from "@/types";
 
 export interface ParsedProductInfo {
   product: string;
+  productCode?: string;
+  brand?: string;
   quantity: number;
   confidence: 'high' | 'medium' | 'low';
 }
@@ -16,11 +18,17 @@ export interface MultiProductParsedInfo {
 
 /**
  * Enhanced parser that can detect multiple products in a single email
+ * Now works with the new product format: Brand, Product Description, Product Code, Unit Price, GST Rate
  */
-export const parseEmailForMultipleProducts = (email: EmailMessage): MultiProductParsedInfo => {
+export const parseEmailForMultipleProducts = (
+  email: EmailMessage, 
+  productCatalog: Product[] = []
+): MultiProductParsedInfo => {
   const emailBody = email.body.toLowerCase();
+  const emailSubject = email.subject.toLowerCase();
+  const fullText = `${emailSubject} ${emailBody}`;
   
-  // Extract customer info (reuse existing logic)
+  // Extract customer info
   const nameMatch = email.from.match(/^([^<]+)<([^>]+)>$/);
   const customerName = nameMatch && nameMatch[1] ? nameMatch[1].trim() : 
     email.from.match(/([^@<\s]+)@[^>]+/)?.[1]?.charAt(0).toUpperCase() + 
@@ -28,114 +36,86 @@ export const parseEmailForMultipleProducts = (email: EmailMessage): MultiProduct
   
   const emailAddress = email.from.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)?.[0] || "";
 
-  // Product detection patterns with multiple product support
-  const productPatterns = [
-    {
-      name: "A4 Paper - 80gsm",
-      patterns: [
-        /(\d+)\s*(sheets?|reams?|pages?)\s*(?:of\s*)?(?:a4\s*)?paper/i,
-        /a4\s*paper[^\d]*(\d+)/i,
-        /(\d+)\s*a4/i,
-        /paper[^\d]*(\d+)/i
-      ],
-      keywords: ['a4', 'paper', '80gsm', 'sheets', 'reams', 'pages']
-    },
-    {
-      name: "Ballpoint Pens - Blue", 
-      patterns: [
-        /(\d+)\s*(?:blue\s*)?(?:ballpoint\s*)?pens?/i,
-        /pens?[^\d]*(\d+)/i,
-        /ballpoint[^\d]*(\d+)/i
-      ],
-      keywords: ['pen', 'pens', 'ballpoint', 'blue', 'writing']
-    },
-    {
-      name: "Stapler - Medium",
-      patterns: [
-        /(\d+)\s*staplers?/i,
-        /stapler[^\d]*(\d+)/i
-      ],
-      keywords: ['stapler', 'staple', 'stapling']
-    },
-    {
-      name: "Spiral Notebook - A5",
-      patterns: [
-        /(\d+)\s*notebooks?/i,
-        /notebook[^\d]*(\d+)/i,
-        /(\d+)\s*spiral/i
-      ],
-      keywords: ['notebook', 'spiral', 'notepad', 'pad']
-    },
-    {
-      name: "Whiteboard Markers - Pack of 4",
-      patterns: [
-        /(\d+)\s*(?:whiteboard\s*)?markers?/i,
-        /markers?[^\d]*(\d+)/i,
-        /whiteboard[^\d]*(\d+)/i
-      ],
-      keywords: ['marker', 'markers', 'whiteboard', 'board']
-    },
-    {
-      name: "File Folders - Pack of 10",
-      patterns: [
-        /(\d+)\s*(?:file\s*)?folders?/i,
-        /folders?[^\d]*(\d+)/i,
-        /files?[^\d]*(\d+)/i
-      ],
-      keywords: ['folder', 'folders', 'file', 'files']
-    }
-  ];
-
   const detectedProducts: ParsedProductInfo[] = [];
 
-  // Check each product pattern
-  for (const productPattern of productPatterns) {
-    let productFound = false;
-    let quantity = 0;
+  // Enhanced product detection using actual product catalog
+  for (const product of productCatalog) {
     let confidence: 'high' | 'medium' | 'low' = 'low';
+    let quantity = 1;
+    let productFound = false;
 
-    // Check keyword presence
-    const keywordScore = productPattern.keywords.reduce((score, keyword) => {
-      return score + (emailBody.includes(keyword) ? 1 : 0);
-    }, 0);
+    // Create search terms from product data
+    const searchTerms = [
+      product.name.toLowerCase(),
+      product.productCode.toLowerCase(),
+      ...(product.brand ? [product.brand.toLowerCase()] : []),
+      // Break down product name into meaningful parts
+      ...product.name.toLowerCase().split(/[-\s,]/),
+      ...product.productCode.toLowerCase().split(/[-\s,]/)
+    ].filter(term => term.length > 2); // Filter out very short terms
 
-    if (keywordScore > 0) {
-      // Try to extract quantity using patterns
-      for (const pattern of productPattern.patterns) {
-        const match = emailBody.match(pattern);
-        if (match && match[1]) {
-          quantity = parseInt(match[1]);
-          productFound = true;
-          
-          // Determine confidence based on keyword score and pattern match
-          if (keywordScore >= 2) {
-            confidence = 'high';
-          } else if (keywordScore === 1) {
-            confidence = 'medium';
-          }
-          break;
-        }
-      }
+    // Check for product mentions
+    let matchScore = 0;
+    const foundTerms: string[] = [];
 
-      // If no quantity found but keywords present, use default quantity
-      if (!productFound && keywordScore >= 1) {
-        const defaultQuantities: Record<string, number> = {
-          "A4 Paper - 80gsm": 500,
-          "Ballpoint Pens - Blue": 50,
-          "Stapler - Medium": 10,
-          "Spiral Notebook - A5": 25,
-          "Whiteboard Markers - Pack of 4": 5,
-          "File Folders - Pack of 10": 3
-        };
-        
-        quantity = defaultQuantities[productPattern.name];
+    for (const term of searchTerms) {
+      if (fullText.includes(term)) {
+        matchScore++;
+        foundTerms.push(term);
         productFound = true;
+      }
+    }
+
+    if (productFound) {
+      // Determine confidence based on match quality
+      if (fullText.includes(product.productCode.toLowerCase())) {
+        confidence = 'high'; // Product code is most reliable
+      } else if (matchScore >= 3 || fullText.includes(product.name.toLowerCase())) {
+        confidence = 'high';
+      } else if (matchScore >= 2) {
+        confidence = 'medium';
+      } else {
         confidence = 'low';
       }
 
-      if (productFound) {
+      // Extract quantity using various patterns
+      const quantityPatterns = [
+        // Direct quantity patterns near product mentions
+        new RegExp(`(\\d+)\\s*(?:units?|pieces?|pcs?\\.?|nos?\\.?)\\s*(?:of\\s*)?(?:${foundTerms.join('|')})`, 'i'),
+        new RegExp(`(?:${foundTerms.join('|')})\\s*[^\\d]*?(\\d+)\\s*(?:units?|pieces?|pcs?\\.?|nos?\\.?)`, 'i'),
+        
+        // Quantity with product code
+        new RegExp(`${product.productCode.toLowerCase()}\\s*[^\\d]*?(\\d+)`, 'i'),
+        new RegExp(`(\\d+)\\s*[^a-z]*?${product.productCode.toLowerCase()}`, 'i'),
+        
+        // General quantity patterns
+        /quantity[^\d]*?(\d+)/i,
+        /qty[^\d]*?(\d+)/i,
+        /need[^\d]*?(\d+)/i,
+        /require[^\d]*?(\d+)/i,
+        /order[^\d]*?(\d+)/i,
+        /want[^\d]*?(\d+)/i,
+        /looking\s+for[^\d]*?(\d+)/i
+      ];
+
+      for (const pattern of quantityPatterns) {
+        const match = fullText.match(pattern);
+        if (match && match[1]) {
+          const extractedQty = parseInt(match[1]);
+          if (extractedQty > 0 && extractedQty < 100000) { // Reasonable quantity range
+            quantity = extractedQty;
+            if (confidence === 'low') confidence = 'medium'; // Boost confidence
+            break;
+          }
+        }
+      }
+
+      // Add to detected products if confidence is reasonable
+      if (confidence !== 'low' || matchScore >= 2) {
         detectedProducts.push({
-          product: productPattern.name,
+          product: product.name,
+          productCode: product.productCode,
+          brand: product.brand,
           quantity,
           confidence
         });
@@ -143,14 +123,66 @@ export const parseEmailForMultipleProducts = (email: EmailMessage): MultiProduct
     }
   }
 
+  // Fallback: Generic product detection for products not in catalog
+  if (detectedProducts.length === 0) {
+    const genericPatterns = [
+      {
+        regex: /(\d+)\s*(?:units?|pieces?|pcs?\.?|nos?\.?)\s*(?:of\s*)?([a-zA-Z0-9\s\-]+)/gi,
+        type: 'quantity_first'
+      },
+      {
+        regex: /([a-zA-Z0-9\s\-]+?)\s*[^\d]*?(\d+)\s*(?:units?|pieces?|pcs?\.?|nos?\.?)/gi,
+        type: 'product_first'
+      },
+      {
+        regex: /(?:quote|quotation|price|pricing).*?for.*?([a-zA-Z0-9\s\-]+)/gi,
+        type: 'quote_mention'
+      }
+    ];
+
+    for (const pattern of genericPatterns) {
+      let match;
+      while ((match = pattern.regex.exec(fullText)) !== null) {
+        let productName = '';
+        let qty = 1;
+
+        if (pattern.type === 'quantity_first') {
+          qty = parseInt(match[1]);
+          productName = match[2].trim();
+        } else if (pattern.type === 'product_first') {
+          productName = match[1].trim();
+          qty = parseInt(match[2]);
+        } else if (pattern.type === 'quote_mention') {
+          productName = match[1].trim();
+          qty = 1;
+        }
+
+        if (productName.length > 3 && productName.length < 100 && qty > 0 && qty < 100000) {
+          detectedProducts.push({
+            product: productName,
+            quantity: qty,
+            confidence: 'low'
+          });
+        }
+      }
+    }
+  }
+
   // Remove duplicates and merge similar products
   const uniqueProducts = detectedProducts.reduce((acc, current) => {
-    const existing = acc.find(p => p.product === current.product);
+    const existing = acc.find(p => 
+      p.product.toLowerCase() === current.product.toLowerCase() ||
+      (p.productCode && current.productCode && p.productCode === current.productCode)
+    );
+    
     if (existing) {
-      // Keep the one with higher confidence or higher quantity
-      if (current.confidence === 'high' || current.quantity > existing.quantity) {
+      // Keep the one with higher confidence or merge quantities
+      if (current.confidence === 'high' && existing.confidence !== 'high') {
         const index = acc.indexOf(existing);
         acc[index] = current;
+      } else if (existing.confidence === current.confidence) {
+        // Same confidence, add quantities
+        existing.quantity += current.quantity;
       }
     } else {
       acc.push(current);
@@ -184,31 +216,50 @@ export const parseEmailForMultipleProducts = (email: EmailMessage): MultiProduct
 };
 
 /**
- * Calculate total price for multiple products
+ * Calculate total price for multiple products with GST
  */
 export const calculateMultiProductPrice = (
   products: ParsedProductInfo[], 
   productCatalog: Product[]
-): { totalPrice: number; itemBreakdown: Array<{product: string; quantity: number; unitPrice: number; subtotal: number}> } => {
+): { 
+  totalPrice: number; 
+  itemBreakdown: Array<{
+    product: string; 
+    quantity: number; 
+    unitPrice: number; 
+    basePrice: number;
+    gstAmount: number;
+    totalPrice: number;
+    gstRate: number;
+  }> 
+} => {
   const itemBreakdown = products.map(parsedProduct => {
     const catalogProduct = productCatalog.find(p => 
-      p.name === parsedProduct.product && 
-      parsedProduct.quantity >= p.minQuantity && 
-      parsedProduct.quantity <= p.maxQuantity
+      p.name === parsedProduct.product || 
+      p.productCode === parsedProduct.productCode
     );
     
-    const unitPrice = catalogProduct ? catalogProduct.pricePerUnit : 0;
-    const subtotal = unitPrice * parsedProduct.quantity;
+    const unitPrice = catalogProduct ? catalogProduct.unitPrice : 0;
+    const gstRate = catalogProduct ? catalogProduct.gstRate : 18; // Default GST rate
+    const basePrice = unitPrice * parsedProduct.quantity;
+    const gstAmount = (basePrice * gstRate) / 100;
+    const totalPrice = basePrice + gstAmount;
     
     return {
       product: parsedProduct.product,
       quantity: parsedProduct.quantity,
       unitPrice,
-      subtotal
+      basePrice: Math.round(basePrice * 100) / 100,
+      gstAmount: Math.round(gstAmount * 100) / 100,
+      totalPrice: Math.round(totalPrice * 100) / 100,
+      gstRate
     };
   });
 
-  const totalPrice = itemBreakdown.reduce((sum, item) => sum + item.subtotal, 0);
+  const totalPrice = itemBreakdown.reduce((sum, item) => sum + item.totalPrice, 0);
   
-  return { totalPrice, itemBreakdown };
+  return { 
+    totalPrice: Math.round(totalPrice * 100) / 100, 
+    itemBreakdown 
+  };
 };

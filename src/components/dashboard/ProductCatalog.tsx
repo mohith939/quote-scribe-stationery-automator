@@ -4,47 +4,122 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
-import { Search, Upload, Plus, Trash2, IndianRupee, Filter, Package, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { Search, Upload, Plus, Trash2, RefreshCw, Package, FileSpreadsheet, Edit, Save, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  fetchProductsFromSheets, 
+  addProduct, 
+  updateProduct, 
+  deleteProduct, 
+  importProductsFromFile 
+} from "@/services/productService";
 
-// Updated product data with categories based on business context
+// Sample products in your new format
 const initialProducts: Product[] = [
-  { id: "zta-500n", name: "ZTA-500N Digital Force Gauge", minQuantity: 1, maxQuantity: 999, pricePerUnit: 83200.00, category: "Testing Equipment" },
-  { id: "glass-thermo", name: "Zeal England Glass Thermometer Range: 10°C - 110°C", minQuantity: 1, maxQuantity: 999, pricePerUnit: 750.00, category: "Measuring Instruments" },
-  { id: "zero-plate-non-ferrous", name: "Zero Plate Non-Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00, category: "Calibration Tools" },
-  { id: "zero-plate-foil", name: "Zero Plate Foil", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1600.00, category: "Calibration Tools" },
-  { id: "zero-plate-ferrous-non-ferrous", name: "Zero Plate Ferrous & Non Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 650.00, category: "Calibration Tools" },
-  { id: "zero-plate-ferrous", name: "Zero Plate Ferrous", minQuantity: 1, maxQuantity: 999, pricePerUnit: 1800.00, category: "Calibration Tools" },
-  { id: "zero-microns-metallic", name: "Zero Microns Metallic Plate", minQuantity: 1, maxQuantity: 999, pricePerUnit: 850.00, category: "Calibration Tools" },
+  {
+    id: "1",
+    brand: "",
+    name: "ZTA-500N- Digital Force Gauge",
+    productCode: "ZTA-500N",
+    unitPrice: 83200.00,
+    gstRate: 18.00,
+    category: "Testing Equipment"
+  },
+  {
+    id: "2",
+    brand: "Other",
+    name: "zero plate Non-Ferrous",
+    productCode: "zero plate Non-Ferrous",
+    unitPrice: 1800.00,
+    gstRate: 18.00,
+    category: "Calibration Tools"
+  },
+  {
+    id: "3",
+    brand: "Jafuji",
+    name: "Zero plate Non furrous",
+    productCode: "Zero plate Non furrous",
+    unitPrice: 650.00,
+    gstRate: 18.00,
+    category: "Calibration Tools"
+  },
+  {
+    id: "4",
+    brand: "Jafuji", 
+    name: "Zero Plate furrous",
+    productCode: "Zero Plate furrous",
+    unitPrice: 650.00,
+    gstRate: 18.00,
+    category: "Calibration Tools"
+  }
 ];
 
 export function ProductCatalog() {
   const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [isEditing, setIsEditing] = useState(false);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>(initialProducts);
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Product>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(50); // For handling large datasets
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  
-  // Get unique categories
-  const categories = Array.from(new Set(products.map(p => p.category)));
-  
-  // Filter products
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
-    
-    return matchesSearch && matchesCategory;
-  });
+
+  // Get unique brands for filtering
+  const brands = useMemo(() => 
+    Array.from(new Set(products.map(p => p.brand).filter(Boolean))), 
+    [products]
+  );
+
+  // Filter and paginate products
+  const { paginatedProducts, totalPages } = useMemo(() => {
+    let filtered = products.filter(product => {
+      const matchesSearch = 
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.productCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      const matchesBrand = brandFilter === "all" || product.brand === brandFilter;
+      
+      return matchesSearch && matchesBrand;
+    });
+
+    setFilteredProducts(filtered);
+
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginated = filtered.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+    return { paginatedProducts: paginated, totalPages };
+  }, [products, searchTerm, brandFilter, currentPage, itemsPerPage]);
+
+  const handleSync = async () => {
+    setIsLoading(true);
+    try {
+      const syncedProducts = await fetchProductsFromSheets();
+      setProducts(syncedProducts);
+      toast({
+        title: "Sync Complete",
+        description: `Synchronized ${syncedProducts.length} products from Google Sheets.`
+      });
+    } catch (error) {
+      toast({
+        title: "Sync Failed", 
+        description: "Failed to sync with Google Sheets. Please check your connection.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleFileUploadClick = () => {
     fileInputRef.current?.click();
@@ -56,81 +131,118 @@ export function ProductCatalog() {
     
     setIsImporting(true);
     
-    // Simulate import process
-    setTimeout(() => {
+    try {
+      const result = await importProductsFromFile(file);
+      
+      if (result.success) {
+        toast({
+          title: "Import Successful",
+          description: `Imported ${result.importedCount} products. ${result.errors.length > 0 ? `${result.errors.length} errors encountered.` : ''}`
+        });
+        
+        // Refresh the product list
+        handleSync();
+      } else {
+        toast({
+          title: "Import Failed",
+          description: result.errors.join(', '),
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Import Successful",
-        description: `Imported ${file.name} with 3 new products.`
+        title: "Import Error",
+        description: "Failed to process the file. Please check the format.",
+        variant: "destructive"
       });
-      
-      const newProducts: Product[] = [
-        {
-          id: "new-product-1",
-          name: "Digital Caliper 150mm Precision",
-          minQuantity: 1,
-          maxQuantity: 50,
-          pricePerUnit: 1200.00,
-          category: "Measuring Instruments"
-        },
-        {
-          id: "new-product-2", 
-          name: "Precision Scale 0.1g Laboratory Grade",
-          minQuantity: 1,
-          maxQuantity: 25,
-          pricePerUnit: 2500.00,
-          category: "Testing Equipment"
-        }
-      ];
-      
-      setProducts([...products, ...newProducts]);
+    } finally {
       setIsImporting(false);
-      
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    }, 1500);
-  };
-
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      toast({
-        title: "Sync Complete",
-        description: "Product catalog synchronized successfully."
-      });
-    }, 2000);
+    }
   };
 
   const handleAddProduct = () => {
     const newProduct: Product = {
-      id: `product-${Date.now()}`,
+      id: `new-${Date.now()}`,
+      brand: "",
       name: "New Product",
-      minQuantity: 1,
-      maxQuantity: 999,
-      pricePerUnit: 0,
+      productCode: "NEW-001",
+      unitPrice: 0,
+      gstRate: 18,
       category: "General"
     };
-    setProducts([...products, newProduct]);
-    setIsEditing(true);
+    setProducts([newProduct, ...products]);
+    setEditingId(newProduct.id);
+    setEditForm(newProduct);
   };
 
-  const handleDeleteProduct = (productId: string) => {
-    setProducts(products.filter(p => p.id !== productId));
-    toast({
-      title: "Product Deleted",
-      description: "Product has been removed from catalog."
-    });
+  const handleEdit = (product: Product) => {
+    setEditingId(product.id);
+    setEditForm(product);
   };
 
-  const getCategoryColor = (category: string) => {
-    const colors: { [key: string]: string } = {
-      "Testing Equipment": "bg-blue-100 text-blue-800",
-      "Measuring Instruments": "bg-green-100 text-green-800",
-      "Calibration Tools": "bg-purple-100 text-purple-800",
-      "General": "bg-gray-100 text-gray-800"
-    };
-    return colors[category] || "bg-gray-100 text-gray-800";
+  const handleSave = async () => {
+    if (!editingId || !editForm.name || !editForm.productCode) {
+      toast({
+        title: "Validation Error",
+        description: "Product name and code are required.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      if (editingId.startsWith('new-')) {
+        // Add new product
+        const newProduct = await addProduct(editForm as Omit<Product, 'id'>);
+        setProducts(products.map(p => p.id === editingId ? newProduct : p));
+      } else {
+        // Update existing product
+        const updatedProduct = await updateProduct(editingId, editForm);
+        setProducts(products.map(p => p.id === editingId ? { ...p, ...updatedProduct } : p));
+      }
+
+      toast({
+        title: "Product Saved",
+        description: "Product has been saved successfully."
+      });
+      
+      setEditingId(null);
+      setEditForm({});
+    } catch (error) {
+      toast({
+        title: "Save Failed",
+        description: "Failed to save product. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleCancel = () => {
+    if (editingId?.startsWith('new-')) {
+      setProducts(products.filter(p => p.id !== editingId));
+    }
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const handleDelete = async (productId: string) => {
+    try {
+      await deleteProduct(productId);
+      setProducts(products.filter(p => p.id !== productId));
+      toast({
+        title: "Product Deleted",
+        description: "Product has been removed from catalog."
+      });
+    } catch (error) {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete product. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -146,11 +258,11 @@ export function ProductCatalog() {
             variant="outline" 
             size="sm"
             onClick={handleSync}
-            disabled={isSyncing}
+            disabled={isLoading}
             className="border-slate-200"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Syncing...' : 'Sync'}
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Syncing...' : 'Sync'}
           </Button>
           <Button 
             variant="outline" 
@@ -167,7 +279,7 @@ export function ProductCatalog() {
             ) : (
               <>
                 <Upload className="mr-2 h-4 w-4" />
-                Import
+                Import CSV
               </>
             )}
           </Button>
@@ -189,23 +301,22 @@ export function ProductCatalog() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search products, codes, or descriptions..."
+                placeholder="Search products, codes, or brands..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 bg-white border-slate-200"
               />
             </div>
             
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-64 bg-white border-slate-200">
-                <Filter className="h-4 w-4 mr-2 text-slate-500" />
-                <SelectValue placeholder="Filter by category" />
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-48 bg-white border-slate-200">
+                <SelectValue placeholder="Filter by brand" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {category}
+                <SelectItem value="all">All Brands</SelectItem>
+                {brands.map((brand) => (
+                  <SelectItem key={brand} value={brand}>
+                    {brand || "No Brand"}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -227,14 +338,6 @@ export function ProductCatalog() {
               <CardTitle className="text-lg">Product Inventory</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setIsEditing(!isEditing)}
-                className="border-slate-200"
-              >
-                {isEditing ? "View Mode" : "Edit Mode"}
-              </Button>
               <Button variant="outline" size="sm" className="border-slate-200">
                 <FileSpreadsheet className="h-4 w-4 mr-2" />
                 Export
@@ -247,112 +350,169 @@ export function ProductCatalog() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/80">
+                  <TableHead className="font-semibold text-slate-700">Brand</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Product Description</TableHead>
                   <TableHead className="font-semibold text-slate-700">Product Code</TableHead>
-                  <TableHead className="font-semibold text-slate-700">Description</TableHead>
-                  <TableHead className="font-semibold text-slate-700">Category</TableHead>
-                  <TableHead className="text-right font-semibold text-slate-700">Price per Unit</TableHead>
-                  <TableHead className="text-center font-semibold text-slate-700">GST</TableHead>
-                  {isEditing && <TableHead className="text-center font-semibold text-slate-700">Actions</TableHead>}
+                  <TableHead className="text-right font-semibold text-slate-700">Unit Price (₹)</TableHead>
+                  <TableHead className="text-center font-semibold text-slate-700">GST Rate (%)</TableHead>
+                  <TableHead className="text-center font-semibold text-slate-700">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredProducts.map((product, index) => (
+                {paginatedProducts.map((product, index) => (
                   <TableRow key={product.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-50/40"}>
                     <TableCell className="font-medium text-sm">
-                      {isEditing ? (
+                      {editingId === product.id ? (
                         <Input
-                          defaultValue={product.id}
+                          value={editForm.brand || ""}
+                          onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })}
                           className="h-8 text-xs bg-white border-slate-200"
+                          placeholder="Brand"
                         />
                       ) : (
-                        <span className="text-blue-600 font-mono">{product.id}</span>
+                        <span className="text-blue-600">{product.brand || "-"}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm max-w-md">
-                      {isEditing ? (
+                      {editingId === product.id ? (
                         <Input
-                          defaultValue={product.name}
+                          value={editForm.name || ""}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                           className="h-8 text-xs bg-white border-slate-200"
+                          placeholder="Product Description"
                         />
                       ) : (
                         <span className="font-medium">{product.name}</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Badge className={getCategoryColor(product.category)}>
-                        {product.category}
-                      </Badge>
+                    <TableCell className="font-mono text-sm">
+                      {editingId === product.id ? (
+                        <Input
+                          value={editForm.productCode || ""}
+                          onChange={(e) => setEditForm({ ...editForm, productCode: e.target.value })}
+                          className="h-8 text-xs bg-white border-slate-200"
+                          placeholder="Product Code"
+                        />
+                      ) : (
+                        <span className="text-slate-600">{product.productCode}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {isEditing ? (
-                        <div className="flex items-center justify-end">
-                          <IndianRupee className="h-4 w-4 mr-1 text-slate-500" />
-                          <Input
-                            type="number"
-                            defaultValue={product.pricePerUnit}
-                            step="0.01"
-                            className="w-32 h-8 text-right text-xs bg-white border-slate-200"
-                          />
-                        </div>
+                      {editingId === product.id ? (
+                        <Input
+                          type="number"
+                          value={editForm.unitPrice || 0}
+                          onChange={(e) => setEditForm({ ...editForm, unitPrice: parseFloat(e.target.value) })}
+                          step="0.01"
+                          className="w-32 h-8 text-right text-xs bg-white border-slate-200"
+                        />
                       ) : (
-                        <div className="flex items-center justify-end font-semibold">
-                          <IndianRupee className="h-4 w-4 mr-1 text-slate-500" />
-                          <span>{product.pricePerUnit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
+                        <span className="font-semibold">
+                          {product.unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        18%
-                      </Badge>
+                      {editingId === product.id ? (
+                        <Input
+                          type="number"
+                          value={editForm.gstRate || 18}
+                          onChange={(e) => setEditForm({ ...editForm, gstRate: parseFloat(e.target.value) })}
+                          step="0.01"
+                          className="w-20 h-8 text-center text-xs bg-white border-slate-200"
+                        />
+                      ) : (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          {product.gstRate}%
+                        </Badge>
+                      )}
                     </TableCell>
-                    {isEditing && (
-                      <TableCell className="text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDeleteProduct(product.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    )}
+                    <TableCell className="text-center">
+                      {editingId === product.id ? (
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={handleSave}
+                          >
+                            <Save className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={handleCancel}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={() => handleEdit(product)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDelete(product.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
           
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-slate-600">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredProducts.length)} of {filteredProducts.length} products
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+          
           {filteredProducts.length === 0 && (
             <div className="text-center py-12 text-slate-500">
               <Package className="h-12 w-12 mx-auto mb-4 text-slate-300" />
               <h3 className="text-lg font-medium mb-2">No products found</h3>
               <p className="text-sm">
-                {searchTerm || categoryFilter !== "all" 
+                {searchTerm || brandFilter !== "all" 
                   ? "Try adjusting your search or filters." 
                   : "Start by adding your first product to the catalog."}
               </p>
-            </div>
-          )}
-          
-          {isEditing && filteredProducts.length > 0 && (
-            <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-200">
-              <Button variant="outline" onClick={() => setIsEditing(false)} className="border-slate-200">
-                Cancel Changes
-              </Button>
-              <Button 
-                onClick={() => {
-                  setIsEditing(false);
-                  toast({
-                    title: "Changes Saved",
-                    description: "Product catalog has been updated successfully."
-                  });
-                }}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
-              >
-                Save Changes
-              </Button>
             </div>
           )}
         </CardContent>

@@ -1,10 +1,14 @@
+
 export interface Product {
   id: string;
   name: string;
-  minQuantity: number;
-  maxQuantity: number;
-  pricePerUnit: number;
-  category: string;
+  productCode: string;
+  brand: string;
+  unitPrice: number;
+  gstRate: number;
+  minQuantity?: number;
+  maxQuantity?: number;
+  category?: string;
 }
 
 export interface QuoteLog {
@@ -14,8 +18,10 @@ export interface QuoteLog {
   emailAddress: string;
   originalMessage: string;
   extractedDetails: {
-    product: string;
-    quantity: number;
+    products: Array<{
+      product: string;
+      quantity: number;
+    }>;
   };
   totalQuotedAmount: number;
   status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
