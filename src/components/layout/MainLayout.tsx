@@ -2,6 +2,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, Clock, FileText, History, Package, Settings as SettingsIcon } from "lucide-react";
+import { Navbar } from "./Navbar";
+import { useEffect } from "react";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -10,8 +12,20 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps) {
+  useEffect(() => {
+    // Listen for settings navigation from navbar
+    const handleSwitchToSettings = () => {
+      onTabChange('settings');
+    };
+
+    window.addEventListener('switchToSettings', handleSwitchToSettings);
+    return () => window.removeEventListener('switchToSettings', handleSwitchToSettings);
+  }, [onTabChange]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      <Navbar />
+      
       <div className="container mx-auto p-6 space-y-6">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-900 mb-2">
@@ -23,7 +37,7 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
         </div>
 
         <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="email-inbox" className="flex items-center gap-2">
               <Mail className="h-4 w-4" />
               Email Inbox
@@ -43,10 +57,6 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
             <TabsTrigger value="product-catalog" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               Product Catalog
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-2">
-              <SettingsIcon className="h-4 w-4" />
-              Settings
             </TabsTrigger>
           </TabsList>
 

@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,33 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
-import { Mail, Database, Shield, Bell, ArrowDown, Key } from "lucide-react";
+import { Shield, Bell, RefreshCw, Key } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { GmailSettings } from "./GmailSettings";
+import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 
 export function Settings() {
   const { toast } = useToast();
-  const [gmailConnected, setGmailConnected] = useState(false);
-  const [sheetsConnected, setSheetsConnected] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [notifications, setNotifications] = useState(true);
-
-  const handleGmailConnect = () => {
-    // Simulate OAuth flow
-    setGmailConnected(true);
-    toast({
-      title: "Gmail Connected",
-      description: "Successfully connected to Gmail API",
-    });
-  };
-
-  const handleSheetsConnect = () => {
-    // Simulate Google Sheets connection
-    setSheetsConnected(true);
-    toast({
-      title: "Google Sheets Connected",
-      description: "Successfully connected to Google Sheets",
-    });
-  };
 
   const handleSync = () => {
     toast({
@@ -48,96 +31,10 @@ export function Settings() {
       </div>
 
       {/* Gmail Integration */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-blue-600" />
-            <CardTitle>Gmail Integration</CardTitle>
-          </div>
-          <CardDescription>
-            Connect your Gmail account to automatically fetch and send emails
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Gmail Connection Status</Label>
-              <p className="text-sm text-slate-600">
-                {gmailConnected ? "Connected" : "Not connected"}
-              </p>
-            </div>
-            <Button
-              onClick={handleGmailConnect}
-              variant={gmailConnected ? "outline" : "default"}
-            >
-              {gmailConnected ? "Reconnect" : "Connect Gmail"}
-            </Button>
-          </div>
-          
-          {gmailConnected && (
-            <div className="space-y-3 pt-4 border-t">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="email-check-interval">Check Interval (minutes)</Label>
-                  <Input id="email-check-interval" type="number" defaultValue="5" />
-                </div>
-                <div>
-                  <Label htmlFor="max-emails">Max Emails per Check</Label>
-                  <Input id="max-emails" type="number" defaultValue="50" />
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <GmailSettings />
 
       {/* Google Sheets Integration */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-green-600" />
-            <CardTitle>Google Sheets Integration</CardTitle>
-          </div>
-          <CardDescription>
-            Connect to Google Sheets for product catalog and quote logging
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Sheets Connection Status</Label>
-              <p className="text-sm text-slate-600">
-                {sheetsConnected ? "Connected" : "Not connected"}
-              </p>
-            </div>
-            <Button
-              onClick={handleSheetsConnect}
-              variant={sheetsConnected ? "outline" : "default"}
-            >
-              {sheetsConnected ? "Reconnect" : "Connect Sheets"}
-            </Button>
-          </div>
-
-          {sheetsConnected && (
-            <div className="space-y-3 pt-4 border-t">
-              <div>
-                <Label htmlFor="product-sheet-id">Product Catalog Sheet ID</Label>
-                <Input 
-                  id="product-sheet-id" 
-                  placeholder="Enter Google Sheets ID for product catalog"
-                />
-              </div>
-              <div>
-                <Label htmlFor="quotes-sheet-id">Quotes Log Sheet ID</Label>
-                <Input 
-                  id="quotes-sheet-id" 
-                  placeholder="Enter Google Sheets ID for quotes logging"
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <GoogleSheetsSettings />
 
       {/* AI Configuration */}
       <Card>
@@ -212,7 +109,7 @@ export function Settings() {
               </p>
             </div>
             <Button onClick={handleSync} variant="outline">
-              <ArrowDown className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-4 w-4 mr-2" />
               Sync Now
             </Button>
           </div>

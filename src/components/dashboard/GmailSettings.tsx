@@ -5,17 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { Info, Mail, RefreshCw } from "lucide-react";
+import { Info, Mail, RefreshCw, AlertCircle } from "lucide-react";
 import { GmailConnectionConfig } from "@/types";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue 
-} from "@/components/ui/select";
 
-// Initial demo state
 const initialConfig: GmailConnectionConfig = {
   isConnected: false,
   lastSyncTime: null,
@@ -29,16 +21,37 @@ export function GmailSettings() {
   const [scriptUrl, setScriptUrl] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState(false);
   
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    if (!scriptUrl.trim() || !scriptUrl.includes('script.google.com')) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid Google Apps Script URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsConnecting(true);
     
-    // Simulate connection process
-    setTimeout(() => {
+    try {
+      // Test the connection to the script
+      const response = await fetch(`${scriptUrl}?action=test`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to connect to script');
+      }
+      
+      const data = await response.json();
+      
+      if (data.status !== 'success') {
+        throw new Error('Script connection test failed');
+      }
+      
       setConfig({
         isConnected: true,
         lastSyncTime: new Date().toISOString(),
         autoRefreshInterval: config.autoRefreshInterval,
-        userName: 'example@gmail.com'
+        userName: data.userEmail || 'Connected User'
       });
       
       setIsConnecting(false);
@@ -47,7 +60,14 @@ export function GmailSettings() {
         title: "Gmail Connected",
         description: "Successfully connected to Gmail account.",
       });
-    }, 1500);
+    } catch (error) {
+      setIsConnecting(false);
+      toast({
+        title: "Connection Failed",
+        description: "Could not connect to Gmail. Please check your script URL and permissions.",
+        variant: "destructive"
+      });
+    }
   };
   
   const handleDisconnect = () => {
@@ -61,18 +81,6 @@ export function GmailSettings() {
     toast({
       title: "Gmail Disconnected",
       description: "Gmail connection has been removed.",
-    });
-  };
-  
-  const handleIntervalChange = (value: string) => {
-    setConfig({
-      ...config,
-      autoRefreshInterval: parseInt(value)
-    });
-    
-    toast({
-      title: "Settings Updated",
-      description: `Auto-refresh interval set to ${value} minutes.`,
     });
   };
   
@@ -102,7 +110,7 @@ export function GmailSettings() {
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>Go to <a href="https://script.google.com/" className="underline" target="_blank" rel="noopener noreferrer">Google Apps Script</a> and create a new project</li>
                       <li>Copy the Google Apps Script code from the reference file</li>
-                      <li>Deploy as a web app and set permissions</li>
+                      <li>Deploy as a web app and set permissions to "Anyone"</li>
                       <li>Copy the web app URL and paste it below</li>
                     </ol>
                   </div>
@@ -118,6 +126,9 @@ export function GmailSettings() {
                 value={scriptUrl}
                 onChange={(e) => setScriptUrl(e.target.value)}
               />
+              <p className="text-xs text-slate-500">
+                This URL is obtained after deploying your Apps Script as a web app
+              </p>
             </div>
             
             <Button 
@@ -128,7 +139,7 @@ export function GmailSettings() {
               {isConnecting ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
+                  Testing Connection...
                 </>
               ) : (
                 'Connect to Gmail'
@@ -151,24 +162,15 @@ export function GmailSettings() {
               </div>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="refreshInterval">Auto-refresh interval</Label>
-              <Select
-                value={config.autoRefreshInterval.toString()}
-                onValueChange={handleIntervalChange}
-              >
-                <SelectTrigger id="refreshInterval">
-                  <SelectValue placeholder="Select interval" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Every 1 minute</SelectItem>
-                  <SelectItem value="5">Every 5 minutes</SelectItem>
-                  <SelectItem value="10">Every 10 minutes</SelectItem>
-                  <SelectItem value="15">Every 15 minutes</SelectItem>
-                  <SelectItem value="30">Every 30 minutes</SelectItem>
-                  <SelectItem value="60">Every 60 minutes</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="rounded-md bg-amber-50 p-4">
+              <div className="flex">
+                <AlertCircle className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                <div className="ml-3">
+                  <p className="text-sm text-amber-700">
+                    Email checking intervals can be configured in the Email Inbox tab
+                  </p>
+                </div>
+              </div>
             </div>
           </>
         )}
