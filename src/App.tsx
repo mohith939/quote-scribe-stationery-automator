@@ -9,8 +9,7 @@ import { LoginPage } from "@/components/auth/LoginPage";
 import { SetupWizard } from "@/components/auth/SetupWizard";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-
-const queryClient = new QueryClient();
+import { useState, useMemo } from "react";
 
 function AppContent() {
   const { isAuthenticated, isSetupComplete, login, loginWithGoogle, completeSetup } = useAuth();
@@ -27,23 +26,34 @@ function AppContent() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Index />} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-      <Toaster />
-      <Sonner />
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  // Create QueryClient inside the component to ensure proper initialization
+  const queryClient = useMemo(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 1,
+        refetchOnWindowFocus: false,
+      },
+    },
+  }), []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+        <Toaster />
+        <Sonner />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
