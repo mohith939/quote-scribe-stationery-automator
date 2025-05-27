@@ -16,23 +16,31 @@ interface PDFTemplateCustomizerProps {
 
 export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFTemplateCustomizerProps) {
   const { toast } = useToast();
-  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
-  const [companyInfo, setCompanyInfo] = useState({
-    name: "Your Company Name",
-    address: "123 Business Street",
-    city: "Business City, BC 12345",
-    phone: "+1 (555) 123-4567",
-    email: "contact@yourcompany.com",
-    website: "www.yourcompany.com"
+  const [companyLogo, setCompanyLogo] = useState<string | null>(() => {
+    return localStorage.getItem('companyLogo') || null;
+  });
+  const [companyInfo, setCompanyInfo] = useState(() => {
+    const saved = localStorage.getItem('companyInfo');
+    return saved ? JSON.parse(saved) : {
+      name: "Your Company Name",
+      address: "123 Business Street",
+      city: "Business City, BC 12345",
+      phone: "+1 (555) 123-4567",
+      email: "contact@yourcompany.com",
+      website: "www.yourcompany.com"
+    };
   });
 
-  const [templateSettings, setTemplateSettings] = useState({
-    headerText: "QUOTATION",
-    footerText: "Thank you for your business!",
-    termsAndConditions: "Payment terms: Net 30 days. Prices valid for 30 days. All prices in USD.",
-    includeCompanyLogo: true,
-    includeTerms: true,
-    primaryColor: "#2563eb"
+  const [templateSettings, setTemplateSettings] = useState(() => {
+    const saved = localStorage.getItem('templateSettings');
+    return saved ? JSON.parse(saved) : {
+      headerText: "QUOTATION",
+      footerText: "Thank you for your business!",
+      termsAndConditions: "Payment terms: Net 30 days. Prices valid for 30 days. All prices in USD.",
+      includeCompanyLogo: true,
+      includeTerms: true,
+      primaryColor: "#2563eb"
+    };
   });
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,7 +48,9 @@ export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFT
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setCompanyLogo(e.target?.result as string);
+        const logoData = e.target?.result as string;
+        setCompanyLogo(logoData);
+        localStorage.setItem('companyLogo', logoData);
         toast({
           title: "Logo uploaded",
           description: "Company logo has been updated successfully."
@@ -51,6 +61,9 @@ export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFT
   };
 
   const handleSaveTemplate = () => {
+    localStorage.setItem('companyInfo', JSON.stringify(companyInfo));
+    localStorage.setItem('templateSettings', JSON.stringify(templateSettings));
+    
     toast({
       title: "Template saved",
       description: `${templateName} template has been customized and saved.`
@@ -238,8 +251,12 @@ export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFT
                 <div className="bg-white border rounded-lg p-6 shadow-lg min-h-[600px]">
                   {/* PDF Header */}
                   <div className="flex items-center justify-between mb-6 pb-4 border-b-2" style={{borderColor: templateSettings.primaryColor}}>
-                    {companyLogo && (
-                      <img src={companyLogo} alt="Company Logo" className="h-12 object-contain" />
+                    {companyLogo && templateSettings.includeCompanyLogo && (
+                      <img 
+                        src={companyLogo} 
+                        alt="Company Logo" 
+                        className="h-12 object-contain max-w-[150px]" 
+                      />
                     )}
                     <div className="text-right">
                       <h1 className="text-2xl font-bold" style={{color: templateSettings.primaryColor}}>
@@ -265,9 +282,9 @@ export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFT
                     <div>
                       <h3 className="font-semibold mb-2" style={{color: templateSettings.primaryColor}}>To:</h3>
                       <div className="text-sm">
-                        <p className="font-medium">{"{customer_name}"}</p>
-                        <p>{"{customer_address}"}</p>
-                        <p>{"{customer_email}"}</p>
+                        <p className="font-medium">Sample Customer</p>
+                        <p>123 Customer Street</p>
+                        <p>customer@example.com</p>
                       </div>
                     </div>
                   </div>
@@ -285,10 +302,10 @@ export function PDFTemplateCustomizer({ open, onOpenChange, templateName }: PDFT
                       </thead>
                       <tbody>
                         <tr>
-                          <td className="border p-2">{"{product_name}"}</td>
-                          <td className="border p-2 text-center">{"{quantity}"}</td>
-                          <td className="border p-2 text-right">{"{unit_price}"}</td>
-                          <td className="border p-2 text-right font-semibold">{"{total_amount}"}</td>
+                          <td className="border p-2">ZTA-500N Digital Force Gauge</td>
+                          <td className="border p-2 text-center">1</td>
+                          <td className="border p-2 text-right">₹83,200.00</td>
+                          <td className="border p-2 text-right font-semibold">₹83,200.00</td>
                         </tr>
                       </tbody>
                     </table>

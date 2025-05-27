@@ -123,8 +123,11 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-blue-800">Required CSV Format</h3>
                 <div className="mt-2 text-sm text-blue-700">
-                  <p>Columns: Brand, Product Description, Product Code, Unit Price, GST Rate</p>
-                  <p className="mt-1">Example: Other, Zero plate Non-Ferrous, ZP-NF-001, 1800.00, 18.00</p>
+                  <p><strong>Required headers:</strong> Brand, Product Description, Product Code, Unit Price, GST Rate</p>
+                  <p className="mt-1"><strong>Example row:</strong></p>
+                  <p className="font-mono text-xs bg-white p-2 rounded mt-1">
+                    Jafuji,Zero Plate Ferrous,ZPF-001,650.00,18.00
+                  </p>
                 </div>
               </div>
             </div>
