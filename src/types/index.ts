@@ -1,10 +1,10 @@
-
 export interface Product {
   id: string;
   name: string;
   productCode: string;
   brand: string;
   unitPrice: number;
+  pricePerUnit?: number; // Add this for backward compatibility
   gstRate: number;
   minQuantity?: number;
   maxQuantity?: number;
@@ -22,6 +22,9 @@ export interface QuoteLog {
       product: string;
       quantity: number;
     }>;
+    // Keep these for backward compatibility
+    product?: string;
+    quantity?: number;
   };
   totalQuotedAmount: number;
   status: 'Sent' | 'Failed' | 'Pending' | 'Manual';

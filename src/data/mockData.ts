@@ -1,3 +1,4 @@
+
 import { Product, QuoteLog, EmailMessage } from "@/types";
 
 // Mock product catalog data
@@ -5,73 +6,109 @@ export const mockProducts: Product[] = [
   {
     id: "1",
     name: "A4 Paper - 80gsm",
+    productCode: "A4-PAPER-80",
+    brand: "Generic",
+    unitPrice: 0.45,
+    pricePerUnit: 0.45,
+    gstRate: 18,
     minQuantity: 1,
     maxQuantity: 499,
-    pricePerUnit: 0.45,
     category: "Paper Products",
   },
   {
     id: "2",
     name: "A4 Paper - 80gsm",
+    productCode: "A4-PAPER-80",
+    brand: "Generic",
+    unitPrice: 0.40,
+    pricePerUnit: 0.40,
+    gstRate: 18,
     minQuantity: 500,
     maxQuantity: 999,
-    pricePerUnit: 0.40,
     category: "Paper Products",
   },
   {
     id: "3",
     name: "A4 Paper - 80gsm",
+    productCode: "A4-PAPER-80",
+    brand: "Generic",
+    unitPrice: 0.35,
+    pricePerUnit: 0.35,
+    gstRate: 18,
     minQuantity: 1000,
     maxQuantity: 4999,
-    pricePerUnit: 0.35,
     category: "Paper Products",
   },
   {
     id: "4",
     name: "A4 Paper - 80gsm",
+    productCode: "A4-PAPER-80",
+    brand: "Generic",
+    unitPrice: 0.30,
+    pricePerUnit: 0.30,
+    gstRate: 18,
     minQuantity: 5000,
     maxQuantity: 10000,
-    pricePerUnit: 0.30,
     category: "Paper Products",
   },
   {
     id: "5",
     name: "Ballpoint Pens - Blue",
+    productCode: "PEN-BLUE",
+    brand: "Generic",
+    unitPrice: 1.20,
+    pricePerUnit: 1.20,
+    gstRate: 18,
     minQuantity: 1,
     maxQuantity: 99,
-    pricePerUnit: 1.20,
     category: "Writing Instruments",
   },
   {
     id: "6",
     name: "Ballpoint Pens - Blue",
+    productCode: "PEN-BLUE",
+    brand: "Generic",
+    unitPrice: 1.00,
+    pricePerUnit: 1.00,
+    gstRate: 18,
     minQuantity: 100,
     maxQuantity: 499,
-    pricePerUnit: 1.00,
     category: "Writing Instruments",
   },
   {
     id: "7",
     name: "Ballpoint Pens - Blue",
+    productCode: "PEN-BLUE",
+    brand: "Generic",
+    unitPrice: 0.85,
+    pricePerUnit: 0.85,
+    gstRate: 18,
     minQuantity: 500,
     maxQuantity: 1000,
-    pricePerUnit: 0.85,
     category: "Writing Instruments",
   },
   {
     id: "8",
     name: "Stapler - Medium",
+    productCode: "STAPLER-MED",
+    brand: "Generic",
+    unitPrice: 8.50,
+    pricePerUnit: 8.50,
+    gstRate: 18,
     minQuantity: 1,
     maxQuantity: 49,
-    pricePerUnit: 8.50,
     category: "Office Supplies",
   },
   {
     id: "9",
     name: "Stapler - Medium",
+    productCode: "STAPLER-MED",
+    brand: "Generic",
+    unitPrice: 7.25,
+    pricePerUnit: 7.25,
+    gstRate: 18,
     minQuantity: 50,
     maxQuantity: 200,
-    pricePerUnit: 7.25,
     category: "Office Supplies",
   },
 ];
@@ -85,10 +122,16 @@ export const mockQuoteLogs: QuoteLog[] = [
     emailAddress: "john.doe@example.com",
     originalMessage: "I need a quote for 2000 sheets of A4 paper. Thanks!",
     extractedDetails: {
+      products: [
+        {
+          product: "A4 Paper - 80gsm",
+          quantity: 2000,
+        }
+      ],
       product: "A4 Paper - 80gsm",
       quantity: 2000,
     },
-    totalQuotedAmount: 700.00, // 2000 * 0.35
+    totalQuotedAmount: 700.00,
     status: "Sent",
   },
   {
@@ -98,10 +141,16 @@ export const mockQuoteLogs: QuoteLog[] = [
     emailAddress: "jane.smith@example.com",
     originalMessage: "Hello, I'm interested in purchasing 75 staplers for our office. Could you please provide a quote?",
     extractedDetails: {
+      products: [
+        {
+          product: "Stapler - Medium",
+          quantity: 75,
+        }
+      ],
       product: "Stapler - Medium",
       quantity: 75,
     },
-    totalQuotedAmount: 543.75, // 75 * 7.25
+    totalQuotedAmount: 543.75,
     status: "Sent",
   },
   {
@@ -111,10 +160,16 @@ export const mockQuoteLogs: QuoteLog[] = [
     emailAddress: "orders@company.com",
     originalMessage: "We need 300 blue pens. What's your best price?",
     extractedDetails: {
+      products: [
+        {
+          product: "Ballpoint Pens - Blue",
+          quantity: 300,
+        }
+      ],
       product: "Ballpoint Pens - Blue",
       quantity: 300,
     },
-    totalQuotedAmount: 300.00, // 300 * 1.00
+    totalQuotedAmount: 300.00,
     status: "Sent",
   },
   {
@@ -124,6 +179,7 @@ export const mockQuoteLogs: QuoteLog[] = [
     emailAddress: "mary@johnson.net",
     originalMessage: "I want to order paper clips and highlighters. Please quote.",
     extractedDetails: {
+      products: [],
       product: "",
       quantity: 0,
     },
@@ -137,10 +193,20 @@ export const mockQuoteLogs: QuoteLog[] = [
     emailAddress: "robert@example.org",
     originalMessage: "Need quote for 600 A4 papers and 50 blue pens.",
     extractedDetails: {
+      products: [
+        {
+          product: "A4 Paper - 80gsm",
+          quantity: 600,
+        },
+        {
+          product: "Ballpoint Pens - Blue",
+          quantity: 50,
+        }
+      ],
       product: "Multiple",
       quantity: 0,
     },
-    totalQuotedAmount: 290.00, // Manual calculation
+    totalQuotedAmount: 290.00,
     status: "Manual",
   },
 ];

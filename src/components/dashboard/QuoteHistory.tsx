@@ -19,7 +19,8 @@ export function QuoteHistory() {
     const matchesSearch = 
       quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.emailAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.extractedDetails.product?.toLowerCase().includes(searchTerm.toLowerCase());
+      (quote.extractedDetails.product?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      quote.extractedDetails.products.some(p => p.product.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === "all" || quote.status === statusFilter;
     
@@ -57,12 +58,17 @@ export function QuoteHistory() {
   const handleExportCSV = () => {
     const headers = "Date,Customer,Email,Product,Quantity,Amount,Status";
     const rows = filteredQuotes.map(quote => {
+      const productDisplay = quote.extractedDetails.product || 
+        (quote.extractedDetails.products.length > 0 ? quote.extractedDetails.products.map(p => p.product).join('; ') : "N/A");
+      const quantityDisplay = quote.extractedDetails.quantity || 
+        (quote.extractedDetails.products.length > 0 ? quote.extractedDetails.products.map(p => p.quantity).join('; ') : "-");
+      
       return [
         new Date(quote.timestamp).toLocaleDateString(),
         quote.customerName,
         quote.emailAddress,
-        quote.extractedDetails.product || "N/A",
-        quote.extractedDetails.quantity || "-",
+        productDisplay,
+        quantityDisplay,
         `₹${quote.totalQuotedAmount.toFixed(2)}`,
         quote.status
       ].join(",");
@@ -152,28 +158,35 @@ export function QuoteHistory() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredQuotes.map((quote) => (
-              <TableRow key={quote.id}>
-                <TableCell className="font-medium">
-                  {new Date(quote.timestamp).toLocaleDateString()}
-                </TableCell>
-                <TableCell>{quote.customerName}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {quote.emailAddress}
-                </TableCell>
-                <TableCell>{quote.extractedDetails.product || "N/A"}</TableCell>
-                <TableCell className="text-right">{quote.extractedDetails.quantity || "-"}</TableCell>
-                <TableCell className="text-right">
-                  ₹{quote.totalQuotedAmount.toFixed(2)}
-                </TableCell>
-                <TableCell>{renderStatusBadge(quote.status)}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {filteredQuotes.map((quote) => {
+              const productDisplay = quote.extractedDetails.product || 
+                (quote.extractedDetails.products.length > 0 ? quote.extractedDetails.products.map(p => p.product).join(', ') : "N/A");
+              const quantityDisplay = quote.extractedDetails.quantity || 
+                (quote.extractedDetails.products.length > 0 ? quote.extractedDetails.products.map(p => p.quantity).join(', ') : "-");
+              
+              return (
+                <TableRow key={quote.id}>
+                  <TableCell className="font-medium">
+                    {new Date(quote.timestamp).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>{quote.customerName}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {quote.emailAddress}
+                  </TableCell>
+                  <TableCell>{productDisplay}</TableCell>
+                  <TableCell className="text-right">{quantityDisplay}</TableCell>
+                  <TableCell className="text-right">
+                    ₹{quote.totalQuotedAmount.toFixed(2)}
+                  </TableCell>
+                  <TableCell>{renderStatusBadge(quote.status)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
         

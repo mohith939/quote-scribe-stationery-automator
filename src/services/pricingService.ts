@@ -20,17 +20,19 @@ export const calculatePrice = (
 ): { pricePerUnit: number, totalPrice: number } | undefined => {
   const product = products.find(p => 
     p.name === productName && 
-    quantity >= p.minQuantity && 
-    quantity <= p.maxQuantity
+    (!p.minQuantity || quantity >= p.minQuantity) && 
+    (!p.maxQuantity || quantity <= p.maxQuantity)
   );
   
   if (!product) {
     return undefined;
   }
   
+  const pricePerUnit = product.pricePerUnit || product.unitPrice;
+  
   return {
-    pricePerUnit: product.pricePerUnit,
-    totalPrice: product.pricePerUnit * quantity
+    pricePerUnit: pricePerUnit,
+    totalPrice: pricePerUnit * quantity
   };
 };
 
@@ -40,7 +42,7 @@ export const calculatePrice = (
 export const getProductQuantityRanges = (productName: string, products = mockProducts): { min: number, max: number }[] => {
   return products
     .filter(p => p.name === productName)
-    .map(p => ({ min: p.minQuantity, max: p.maxQuantity }))
+    .map(p => ({ min: p.minQuantity || 1, max: p.maxQuantity || 999999 }))
     .sort((a, b) => a.min - b.min);
 };
 
