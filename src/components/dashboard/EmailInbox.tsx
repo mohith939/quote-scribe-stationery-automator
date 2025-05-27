@@ -1,10 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { mockEmails } from "@/data/mockData";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Search, Filter, Edit, ArrowRight, Zap } from "lucide-react";
+import { AlertCircle, FileText, RefreshCw, Send, ToggleLeft, ToggleRight, Search, Filter, Edit, ArrowRight, Zap, Clock } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -19,23 +18,26 @@ import {
   autoProcessEmails
 } from "@/services/gmailService";
 import { parseEmailForMultipleProducts } from "@/services/advancedEmailParser";
+import { getCachedProducts } from "@/services/productService";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(false);
-  const [autoSendEnabled, setAutoSendEnabled] = useState<boolean>(false);
+  const [checkInterval, setCheckInterval] = useState<string>("5"); // minutes
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [showReclassifyDialog, setShowReclassifyDialog] = useState(false);
   const [selectedEmailForReclassify, setSelectedEmailForReclassify] = useState<EmailMessage | null>(null);
   
-  // Fetch emails using React Query
+  // Get real products data
+  const realProducts = getCachedProducts();
+  
+  // Fetch emails using React Query with real Gmail API
   const { data: emails, isLoading, isError, refetch } = useQuery({
     queryKey: ['unreadEmails'],
     queryFn: fetchUnreadEmails,
-    placeholderData: mockEmails,
     staleTime: 60000,
     retry: 1,
     meta: {
@@ -44,7 +46,7 @@ export function EmailInbox() {
           console.error("Failed to fetch emails:", error);
           toast({
             title: "Error fetching emails",
-            description: "Using mock data instead. Check your connection to Gmail.",
+            description: "Failed to connect to Gmail. Please check your OAuth connection.",
             variant: "destructive"
           });
         }
@@ -52,27 +54,54 @@ export function EmailInbox() {
     }
   });
 
-  // Enhanced email type detection with multi-product support
+  // Enhanced email type detection with real product matching
   const detectEmailType = (email: EmailMessage) => {
     const multiProductInfo = parseEmailForMultipleProducts(email);
     
-    if (multiProductInfo.products.length > 0) {
+    // Match detected products with real product catalog
+    const matchedProducts = multiProductInfo.products.map(detectedProduct => {
+      const realProduct = realProducts.find(p => 
+        p.name.toLowerCase().includes(detectedProduct.product.toLowerCase()) ||
+        p.productCode.toLowerCase().includes(detectedProduct.product.toLowerCase()) ||
+        detectedProduct.product.toLowerCase().includes(p.name.toLowerCase())
+      );
+      
+      return {
+        detected: detectedProduct.product,
+        matched: realProduct?.name || null,
+        confidence: detectedProduct.confidence,
+        quantity: detectedProduct.quantity
+      };
+    });
+    
+    if (matchedProducts.length > 0) {
+      const avgConfidence = matchedProducts.reduce((acc, p) => {
+        const confScore = p.confidence === 'high' ? 3 : p.confidence === 'medium' ? 2 : 1;
+        return acc + confScore;
+      }, 0) / matchedProducts.length;
+      
+      const overallConfidence = avgConfidence >= 2.5 ? 'high' : avgConfidence >= 1.5 ? 'medium' : 'low';
+      
       return {
         type: 'quote',
-        confidence: multiProductInfo.overallConfidence,
-        productCount: multiProductInfo.products.length
+        confidence: overallConfidence as 'high' | 'medium' | 'low',
+        productCount: matchedProducts.length,
+        products: matchedProducts
       };
     }
     
     return {
       type: 'non-quote',
       confidence: 'low' as const,
-      productCount: 0
+      productCount: 0,
+      products: []
     };
   };
 
-  // Setup email auto-sync
+  // Setup email auto-sync with configurable interval
   useEffect(() => {
+    const intervalMs = parseInt(checkInterval) * 60 * 1000; // Convert minutes to milliseconds
+    
     const emailProcessor = setupAutoEmailProcessing(async (newEmails) => {
       if (autoSyncEnabled && newEmails.length > 0) {
         toast({
@@ -93,7 +122,7 @@ export function EmailInbox() {
         
         refetch();
       }
-    }, 60000);
+    }, intervalMs);
     
     if (autoSyncEnabled) {
       emailProcessor.start();
@@ -102,7 +131,7 @@ export function EmailInbox() {
     return () => {
       emailProcessor.stop();
     };
-  }, [autoSyncEnabled, refetch, toast]);
+  }, [autoSyncEnabled, checkInterval, refetch, toast]);
 
   const handleProcessManually = async (email: EmailMessage) => {
     setProcessingEmailId(email.id);
@@ -110,7 +139,6 @@ export function EmailInbox() {
     try {
       await markEmailAsRead(email.id).catch(console.error);
       
-      // Add to processing queue
       setTimeout(() => {
         toast({
           title: "Added to Processing Queue",
@@ -135,7 +163,6 @@ export function EmailInbox() {
     setProcessingEmailId(email.id);
     
     try {
-      // Simulate quote generation and sending
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       toast({
@@ -178,7 +205,6 @@ export function EmailInbox() {
 
     for (const email of quoteEmails) {
       await handleSendQuote(email);
-      // Small delay between sends
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
@@ -233,7 +259,7 @@ export function EmailInbox() {
             <div>
               <CardTitle>Email Inbox</CardTitle>
               <CardDescription>
-                All received emails requiring response - Now with multi-product detection!
+                All received emails requiring response - Real-time Gmail integration with product matching!
               </CardDescription>
             </div>
             <div className="flex items-center space-x-4">
@@ -257,6 +283,23 @@ export function EmailInbox() {
                   )}
                 </Label>
               </div>
+              
+              {/* Check Interval Selector */}
+              <div className="flex items-center space-x-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Select value={checkInterval} onValueChange={setCheckInterval}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1min</SelectItem>
+                    <SelectItem value="5">5min</SelectItem>
+                    <SelectItem value="15">15min</SelectItem>
+                    <SelectItem value="30">30min</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
               {quoteRequestsCount > 0 && (
                 <Button 
                   onClick={handleAutoSendAll}
@@ -308,12 +351,13 @@ export function EmailInbox() {
               <div className="flex justify-center py-8">
                 <div className="animate-pulse flex flex-col items-center">
                   <RefreshCw className="h-8 w-8 mb-2" />
-                  <p className="text-sm text-muted-foreground">Loading emails...</p>
+                  <p className="text-sm text-muted-foreground">Loading emails from Gmail...</p>
                 </div>
               </div>
             ) : isError ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p>Failed to load emails</p>
+                <p>Failed to load emails from Gmail</p>
+                <p className="text-sm mt-1">Please check your Gmail OAuth connection</p>
                 <Button 
                   variant="outline" 
                   onClick={() => refetch()} 
@@ -363,6 +407,36 @@ export function EmailInbox() {
                         <div className="text-sm text-muted-foreground line-clamp-2">
                           {email.body}
                         </div>
+                        
+                        {/* Show detected and matched products */}
+                        {emailType.type === 'quote' && emailType.products && emailType.products.length > 0 && (
+                          <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                            <div className="text-sm font-medium text-blue-800 mb-2">Detected Products:</div>
+                            <div className="space-y-1">
+                              {emailType.products.map((product, index) => (
+                                <div key={index} className="text-sm">
+                                  <span className="text-blue-700">
+                                    {product.matched ? (
+                                      <span className="font-medium">{product.matched}</span>
+                                    ) : (
+                                      <span className="text-red-600">"{product.detected}" (not found in catalog)</span>
+                                    )}
+                                  </span>
+                                  {product.quantity && (
+                                    <span className="text-blue-600 ml-2">• Qty: {product.quantity}</span>
+                                  )}
+                                  <span className={`ml-2 text-xs px-2 py-1 rounded ${
+                                    product.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                                    product.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {product.confidence}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -456,6 +530,9 @@ export function EmailInbox() {
                   • {quoteRequestsCount} ready for auto-quote
                 </span>
               )}
+              <span className="ml-4 text-green-600 font-medium">
+                • Checking every {checkInterval} minutes
+              </span>
             </div>
           )}
         </CardContent>

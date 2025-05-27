@@ -41,11 +41,29 @@ export function LoginPage({ onLogin, onGoogleLogin }: LoginPageProps) {
   };
 
   const handleGoogleLogin = () => {
+    // Redirect to actual Google OAuth URL
+    const googleOAuthUrl = `https://accounts.google.com/oauth2/v2/auth?client_id=YOUR_GOOGLE_CLIENT_ID&redirect_uri=${encodeURIComponent(window.location.origin + '/auth/callback')}&scope=email%20profile%20https://www.googleapis.com/auth/gmail.readonly&response_type=code&access_type=offline&prompt=consent`;
+    
     toast({
-      title: "Google OAuth",
-      description: "Redirecting to Google authentication...",
+      title: "Redirecting to Google",
+      description: "Opening Google OAuth in new window...",
     });
-    onGoogleLogin();
+    
+    // Open in popup window for better UX
+    const popup = window.open(googleOAuthUrl, 'google-oauth', 'width=500,height=600');
+    
+    // Listen for popup completion
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkClosed);
+        // Check if auth was successful
+        const authResult = localStorage.getItem('google_auth_result');
+        if (authResult === 'success') {
+          onGoogleLogin();
+          localStorage.removeItem('google_auth_result');
+        }
+      }
+    }, 1000);
   };
 
   return (
@@ -181,13 +199,6 @@ export function LoginPage({ onLogin, onGoogleLogin }: LoginPageProps) {
             </div>
           </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-slate-500">
-            Powered by <span className="font-semibold text-blue-600">Lovable</span> & <span className="font-semibold text-slate-700">Blackbox</span>
-          </p>
-        </div>
       </div>
     </div>
   );
