@@ -5,6 +5,8 @@ import { ProcessingQueue } from "@/components/dashboard/ProcessingQueue";
 import { QuoteTemplates } from "@/components/dashboard/QuoteTemplates";
 import { QuoteHistory } from "@/components/dashboard/QuoteHistory";
 import { ProductCatalog } from "@/components/dashboard/ProductCatalog";
+import { AnalyticsDashboard } from "@/components/dashboard/AnalyticsDashboard";
+import { CustomerManagement } from "@/components/dashboard/CustomerManagement";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useState } from "react";
 
@@ -27,6 +29,12 @@ const Index = () => {
       </TabsContent>
       <TabsContent value="product-catalog" className="mt-0">
         <ProductCatalog />
+      </TabsContent>
+      <TabsContent value="analytics" className="mt-0">
+        <AnalyticsDashboard />
+      </TabsContent>
+      <TabsContent value="customers" className="mt-0">
+        <CustomerManagement />
       </TabsContent>
     </MainLayout>
   );

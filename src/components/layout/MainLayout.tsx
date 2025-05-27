@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,9 @@ import {
   User, 
   LogOut,
   RefreshCw,
-  Plus
+  Plus,
+  BarChart3,
+  Users
 } from "lucide-react";
 
 interface MainLayoutProps {
@@ -152,8 +155,8 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
       {/* Main Content Area */}
       <div className="container mx-auto px-6 py-8 max-w-7xl">
         <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-          {/* Premium Tab Navigation */}
-          <TabsList className="grid w-full grid-cols-5 mb-8 bg-white/60 backdrop-blur-sm border border-slate-200/60 h-14 p-1 rounded-xl shadow-sm">
+          {/* Enhanced Tab Navigation with Phase 2 & 3 */}
+          <TabsList className="grid w-full grid-cols-7 mb-8 bg-white/60 backdrop-blur-sm border border-slate-200/60 h-14 p-1 rounded-xl shadow-sm">
             <TabsTrigger 
               value="email-inbox" 
               className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700 text-sm font-medium rounded-lg"
@@ -188,6 +191,20 @@ export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps
             >
               <Package className="h-4 w-4" />
               Product Catalog
+            </TabsTrigger>
+            <TabsTrigger 
+              value="analytics"
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700 text-sm font-medium rounded-lg"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger 
+              value="customers"
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700 text-sm font-medium rounded-lg"
+            >
+              <Users className="h-4 w-4" />
+              Customers
             </TabsTrigger>
           </TabsList>
 

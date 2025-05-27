@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +18,7 @@ import {
   setupAutoEmailProcessing,
   autoProcessEmails
 } from "@/services/gmailService";
+import { parseEmailForMultipleProducts } from "@/services/advancedEmailParser";
 
 export function EmailInbox() {
   const { toast } = useToast();
@@ -52,40 +52,22 @@ export function EmailInbox() {
     }
   });
 
-  // Enhanced email type detection
+  // Enhanced email type detection with multi-product support
   const detectEmailType = (email: EmailMessage) => {
-    const body = email.body.toLowerCase();
-    const subject = email.subject.toLowerCase();
-    const fullText = `${subject} ${body}`;
+    const multiProductInfo = parseEmailForMultipleProducts(email);
     
-    // Specific product detection
-    const productKeywords = [
-      'a4 paper', 'ballpoint pen', 'stapler', 'notebook', 'whiteboard marker', 'file folder',
-      'zta-500n', 'digital force gauge', 'glass thermometer', 'zero plate', 'metallic plate'
-    ];
-    
-    const quoteKeywords = ['quote', 'quotation', 'pricing', 'price', 'cost', 'estimate', 'inquiry', 'purchase', 'buy', 'order'];
-    const urgentKeywords = ['urgent', 'asap', 'immediately', 'rush', 'priority'];
-    
-    const hasProductKeywords = productKeywords.some(keyword => fullText.includes(keyword));
-    const hasQuoteKeywords = quoteKeywords.some(keyword => fullText.includes(keyword));
-    const hasUrgentKeywords = urgentKeywords.some(keyword => fullText.includes(keyword));
-    
-    if (hasProductKeywords && hasQuoteKeywords) {
+    if (multiProductInfo.products.length > 0) {
       return {
         type: 'quote',
-        confidence: hasUrgentKeywords ? 'high' : 'medium'
-      };
-    } else if (hasQuoteKeywords) {
-      return {
-        type: 'quote',
-        confidence: 'low'
+        confidence: multiProductInfo.overallConfidence,
+        productCount: multiProductInfo.products.length
       };
     }
     
     return {
       type: 'non-quote',
-      confidence: 'low'
+      confidence: 'low' as const,
+      productCount: 0
     };
   };
 
@@ -251,7 +233,7 @@ export function EmailInbox() {
             <div>
               <CardTitle>Email Inbox</CardTitle>
               <CardDescription>
-                All received emails requiring response
+                All received emails requiring response - Now with multi-product detection!
               </CardDescription>
             </div>
             <div className="flex items-center space-x-4">
@@ -354,7 +336,12 @@ export function EmailInbox() {
                         <div className="flex items-center gap-2 mb-1">
                           <div className="font-medium">{email.from}</div>
                           {emailType.type === 'quote' ? (
-                            <Badge className="bg-blue-500">Quote Request</Badge>
+                            <Badge className="bg-blue-500">
+                              Quote Request
+                              {emailType.productCount > 1 && (
+                                <span className="ml-1">({emailType.productCount} products)</span>
+                              )}
+                            </Badge>
                           ) : (
                             <Badge variant="outline">Non-Quote</Badge>
                           )}
@@ -440,6 +427,11 @@ export function EmailInbox() {
                           <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
                           <span className="text-muted-foreground">
                             AI detected this as a quote request with {emailType.confidence} confidence
+                            {emailType.productCount > 1 && (
+                              <span className="ml-1 font-medium text-blue-600">
+                                • Multiple products detected ({emailType.productCount})
+                              </span>
+                            )}
                           </span>
                         </div>
                       </div>
