@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/components/auth/AuthProvider";
 import { User, Mail, Phone, MapPin, Building, Save, Camera } from "lucide-react";
 
 interface ProfileDialogProps {
@@ -18,15 +17,19 @@ interface ProfileDialogProps {
 }
 
 export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
-  const { user } = useAuth();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Get user data from localStorage
+  const userEmail = localStorage.getItem('userEmail') || 'user@example.com';
+  const userName = userEmail.split('@')[0];
+  
   const [profileData, setProfileData] = useState({
-    name: user?.name || "",
-    email: user?.email || "",
+    name: userName,
+    email: userEmail,
     phone: "+1 (555) 123-4567",
     company: "TechCorp Solutions",
-    position: user?.role || "Manager",
+    position: "Manager",
     location: "San Francisco, CA",
     bio: "Experienced quote manager with 5+ years in B2B sales and client relations.",
   });
@@ -73,9 +76,9 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
                 <div className="flex items-center gap-6">
                   <div className="relative">
                     <Avatar className="h-20 w-20 ring-4 ring-slate-200">
-                      <AvatarImage src={user?.avatar} alt={user?.name} />
+                      <AvatarImage src="" alt={userName} />
                       <AvatarFallback className="bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700 text-xl">
-                        {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
+                        {userName.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
                     <Button
