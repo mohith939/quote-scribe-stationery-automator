@@ -1,3 +1,4 @@
+
 export interface Product {
   id: string;
   name: string;
@@ -64,6 +65,8 @@ export interface GmailConnectionConfig {
   lastSyncTime: string | null;
   autoRefreshInterval: number; // in minutes
   userName: string | null;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 export interface GoogleSheetsConfig {
