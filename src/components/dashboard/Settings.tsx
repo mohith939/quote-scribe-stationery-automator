@@ -8,7 +8,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
 import { Shield, Bell, RefreshCw, Key } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { GmailSettings } from "./GmailSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 
 export function Settings() {
@@ -29,9 +28,6 @@ export function Settings() {
         <h2 className="text-2xl font-bold text-slate-900">Settings</h2>
         <p className="text-slate-600 mt-1">Manage your system configuration and integrations</p>
       </div>
-
-      {/* Gmail Integration */}
-      <GmailSettings />
 
       {/* Google Sheets Integration */}
       <GoogleSheetsSettings />
