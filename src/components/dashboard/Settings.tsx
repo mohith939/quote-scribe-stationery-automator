@@ -12,9 +12,11 @@ import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function Settings() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [scriptUrl, setScriptUrl] = useState("");
@@ -168,14 +170,19 @@ function testConnection() {
 
   // Load Google Apps Script configuration on component mount
   useEffect(() => {
-    loadGoogleAppsScriptConfig();
-  }, []);
+    if (user) {
+      loadGoogleAppsScriptConfig();
+    }
+  }, [user]);
 
   const loadGoogleAppsScriptConfig = async () => {
+    if (!user) return;
+
     try {
       const { data, error } = await supabase
         .from('google_apps_script_config')
         .select('*')
+        .eq('user_id', user.id)
         .single();
 
       if (error && error.code !== 'PGRST116') {
@@ -197,6 +204,15 @@ function testConnection() {
       toast({
         title: "Missing URL",
         description: "Please enter the Google Apps Script URL first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to test the connection.",
         variant: "destructive",
       });
       return;
@@ -231,10 +247,13 @@ function testConnection() {
   };
 
   const updateGoogleAppsScriptConfig = async (url: string, connected: boolean) => {
+    if (!user) return;
+
     try {
       const { error } = await supabase
         .from('google_apps_script_config')
         .upsert({
+          user_id: user.id,
           script_url: url,
           is_connected: connected,
           last_sync_time: connected ? new Date().toISOString() : null,
