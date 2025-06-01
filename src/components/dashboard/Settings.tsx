@@ -190,11 +190,11 @@ function testConnection() {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('google_apps_script_config' as any)
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+      // Use a direct query without relying on auto-generated types
+      const { data, error } = await supabase.rpc('exec_sql', {
+        sql: `SELECT * FROM google_apps_script_config WHERE user_id = $1`,
+        params: [user.id]
+      }).single();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error loading config:', error);
@@ -262,7 +262,7 @@ function testConnection() {
     if (!user) return;
 
     try {
-      const configData: GoogleAppsScriptConfig = {
+      const configData = {
         user_id: user.id,
         script_url: url,
         is_connected: connected,
@@ -270,9 +270,26 @@ function testConnection() {
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase
-        .from('google_apps_script_config' as any)
-        .upsert(configData as any);
+      // Use a direct SQL execution to bypass type issues
+      const { error } = await supabase.rpc('exec_sql', {
+        sql: `
+          INSERT INTO google_apps_script_config (user_id, script_url, is_connected, last_sync_time, updated_at)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (user_id) 
+          DO UPDATE SET 
+            script_url = EXCLUDED.script_url,
+            is_connected = EXCLUDED.is_connected,
+            last_sync_time = EXCLUDED.last_sync_time,
+            updated_at = EXCLUDED.updated_at
+        `,
+        params: [
+          configData.user_id,
+          configData.script_url,
+          configData.is_connected,
+          configData.last_sync_time,
+          configData.updated_at
+        ]
+      });
 
       if (error) {
         console.error('Error updating config:', error);
