@@ -14,6 +14,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/auth/AuthProvider";
 
+// Type definitions for our data
+interface GoogleAppsScriptConfig {
+  id?: string;
+  user_id: string;
+  script_url?: string;
+  is_connected?: boolean;
+  last_sync_time?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export function Settings() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -180,7 +191,7 @@ function testConnection() {
 
     try {
       const { data, error } = await supabase
-        .from('google_apps_script_config')
+        .from('google_apps_script_config' as any)
         .select('*')
         .eq('user_id', user.id)
         .single();
@@ -191,8 +202,9 @@ function testConnection() {
       }
 
       if (data) {
-        setScriptUrl(data.script_url || '');
-        setIsConnected(data.is_connected || false);
+        const config = data as GoogleAppsScriptConfig;
+        setScriptUrl(config.script_url || '');
+        setIsConnected(config.is_connected || false);
       }
     } catch (error) {
       console.error('Error loading Google Apps Script config:', error);
@@ -250,15 +262,17 @@ function testConnection() {
     if (!user) return;
 
     try {
+      const configData: GoogleAppsScriptConfig = {
+        user_id: user.id,
+        script_url: url,
+        is_connected: connected,
+        last_sync_time: connected ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
-        .from('google_apps_script_config')
-        .upsert({
-          user_id: user.id,
-          script_url: url,
-          is_connected: connected,
-          last_sync_time: connected ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString()
-        });
+        .from('google_apps_script_config' as any)
+        .upsert(configData as any);
 
       if (error) {
         console.error('Error updating config:', error);
