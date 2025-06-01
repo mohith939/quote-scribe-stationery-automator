@@ -9,13 +9,45 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      google_apps_script_config: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_connected: boolean | null
+          last_sync_time: string | null
+          script_url: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_time?: string | null
+          script_url?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_time?: string | null
+          script_url?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      exec_sql: {
+        Args: { sql: string; params?: Json }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
