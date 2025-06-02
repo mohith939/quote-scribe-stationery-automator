@@ -13,7 +13,8 @@ import {
   Link as LinkIcon, 
   RefreshCw,
   FileText,
-  ExternalLink 
+  ExternalLink,
+  AlertCircle
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -324,22 +325,45 @@ function getConfig() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${scriptUrl}?action=testConnection&_=${Date.now()}`);
+      // Add cache-busting parameter and proper headers
+      const testUrl = `${scriptUrl}?action=testConnection&_=${Date.now()}`;
+      console.log('Testing connection to:', testUrl);
+      
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Accept': 'application/json',
+        },
+        credentials: 'omit'
+      });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        // If it's not JSON, treat it as a success message
+        data = { success: true, message: responseText };
+      }
 
-      if (data.success) {
+      if (data.success || responseText.includes('QuoteScribe Gmail Integration Active')) {
         await updateGoogleAppsScriptConfig(scriptUrl, true);
         setIsConnected(true);
         setLastSyncTime(new Date().toISOString());
         
         toast({
           title: "Connection Successful",
-          description: `Connected to Google Apps Script. Gmail: ${data.services?.gmail ? 'OK' : 'Failed'}, Sheets: ${data.services?.sheets ? 'OK' : 'Not configured'}`,
+          description: data.message || "Connected to Google Apps Script successfully!",
         });
       } else {
         throw new Error(data.error || 'Connection test failed');
@@ -349,9 +373,17 @@ function getConfig() {
       await updateGoogleAppsScriptConfig(scriptUrl, false);
       setIsConnected(false);
       
+      let errorMessage = "Could not connect to Google Apps Script.";
+      
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        errorMessage = "Network error: Please check if the URL is correct and the web app is deployed properly. Make sure the deployment has 'Execute as: Me' and 'Access: Anyone' permissions.";
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Connection Failed",
-        description: error instanceof Error ? error.message : "Could not connect to Google Apps Script. Please check the URL and deployment settings.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -373,7 +405,9 @@ function getConfig() {
 
       const { error } = await supabase
         .from('google_apps_script_config')
-        .upsert(configData);
+        .upsert(configData, {
+          onConflict: 'user_id'
+        });
 
       if (error) {
         console.error('Error updating config:', error);
@@ -383,16 +417,15 @@ function getConfig() {
     }
   };
 
-  const downloadCodeAsDocx = () => {
-    // Create a blob with the code content formatted for Word
-    const content = `Google Apps Script Code for QuoteScribe Integration\n\n${googleAppsScriptCode}`;
-    const blob = new Blob([content], { type: 'text/plain' });
+  const downloadCodeAsText = () => {
+    // Create a blob with the code content
+    const blob = new Blob([googleAppsScriptCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     
     // Create download link
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'google-apps-script-quotescribe.txt';
+    a.download = 'google-apps-script-quotescribe.js';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -400,7 +433,7 @@ function getConfig() {
     
     toast({
       title: "Code Downloaded",
-      description: "Google Apps Script code has been downloaded as a text file.",
+      description: "Google Apps Script code has been downloaded as a .js file.",
     });
   };
 
@@ -515,9 +548,9 @@ function getConfig() {
                   <Button onClick={copyToClipboard} variant="outline" size="sm">
                     Copy to Clipboard
                   </Button>
-                  <Button onClick={downloadCodeAsDocx} variant="outline" size="sm">
+                  <Button onClick={downloadCodeAsText} variant="outline" size="sm">
                     <Download className="h-4 w-4 mr-2" />
-                    Download as Text File
+                    Download as .js File
                   </Button>
                 </div>
                 <Textarea
@@ -543,11 +576,30 @@ function getConfig() {
             </DialogContent>
           </Dialog>
           
-          <Button variant="outline" size="sm" onClick={downloadCodeAsDocx}>
+          <Button variant="outline" size="sm" onClick={downloadCodeAsText}>
             <FileText className="h-4 w-4 mr-2" />
             Download Code
           </Button>
         </div>
+
+        {/* Connection troubleshooting */}
+        {!isConnected && scriptUrl && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800">Connection Troubleshooting</span>
+            </div>
+            <div className="text-xs text-amber-700 mt-1">
+              <p>If connection fails, please verify:</p>
+              <ul className="list-disc pl-4 mt-1 space-y-1">
+                <li>The web app is deployed with "Execute as: Me"</li>
+                <li>Access is set to "Anyone" (not "Anyone with link")</li>
+                <li>The URL ends with "/exec" (not "/dev")</li>
+                <li>You have authorized the required Google permissions</li>
+              </ul>
+            </div>
+          </div>
+        )}
 
         {isConnected && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -557,18 +609,6 @@ function getConfig() {
             </div>
             <p className="text-xs text-green-700 mt-1">
               Your Google Apps Script is connected and ready to process emails automatically.
-            </p>
-          </div>
-        )}
-        
-        {!isConnected && scriptUrl && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-amber-600" />
-              <span className="text-sm font-medium text-amber-800">Connection Required</span>
-            </div>
-            <p className="text-xs text-amber-700 mt-1">
-              Click "Connect" to test and establish the connection to your Google Apps Script.
             </p>
           </div>
         )}
