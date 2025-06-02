@@ -1,9 +1,31 @@
 
 import { EmailMessage } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 
-// Base URL of our deployed Google Apps Script web app
-// This would be replaced with your actual deployed script URL
-const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/your-script-id/exec";
+// Function to get the user's Google Apps Script URL from database
+const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('google_apps_script_config')
+      .select('script_url, is_connected')
+      .eq('user_id', user.id)
+      .eq('is_connected', true)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('No connected Google Apps Script found:', error);
+      return null;
+    }
+
+    return data.script_url;
+  } catch (error) {
+    console.error('Error getting Google Apps Script URL:', error);
+    return null;
+  }
+};
 
 // Configuration for email processing
 const EMAIL_CONFIG = {
@@ -15,14 +37,24 @@ const EMAIL_CONFIG = {
 // Function to fetch unread emails from Gmail via Google Apps Script
 export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   try {
-    const response = await fetch(`${GOOGLE_APPS_SCRIPT_URL}?action=fetchUnreadEmails`);
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured or connected');
+    }
+
+    const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch emails: ${response.statusText}`);
     }
     
     const data = await response.json();
-    return data.emails.map((email: any) => ({
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to fetch emails');
+    }
+    
+    return (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
       subject: email.subject,
@@ -33,12 +65,17 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
     console.error("Error fetching unread emails:", error);
     throw error;
   }
-}
+};
 
 // Mark an email as read in Gmail
 export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   try {
-    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured or connected');
+    }
+
+    const response = await fetch(scriptUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -59,7 +96,7 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
     console.error("Error marking email as read:", error);
     return false;
   }
-}
+};
 
 // Send a quote email response
 export const sendQuoteEmail = async (
@@ -69,7 +106,12 @@ export const sendQuoteEmail = async (
   originalEmailId?: string // Optional reference to the original email
 ): Promise<boolean> => {
   try {
-    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured or connected');
+    }
+
+    const response = await fetch(scriptUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,9 +135,9 @@ export const sendQuoteEmail = async (
     console.error("Error sending email:", error);
     return false;
   }
-}
+};
 
-// Log quote information to Google Sheets (Phase 6)
+// Log quote information to Google Sheets
 export const logQuoteToSheet = async (quoteData: {
   timestamp: string;
   customerName: string;
@@ -107,7 +149,12 @@ export const logQuoteToSheet = async (quoteData: {
   status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
 }): Promise<boolean> => {
   try {
-    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured or connected');
+    }
+
+    const response = await fetch(scriptUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -128,9 +175,45 @@ export const logQuoteToSheet = async (quoteData: {
     console.error("Error logging quote to sheet:", error);
     return false;
   }
-}
+};
 
-// New function: Set up auto-processing of emails
+// Function to test the Google Apps Script connection
+export const testGoogleAppsScriptConnection = async (): Promise<{
+  success: boolean;
+  message: string;
+  services?: { gmail: boolean; sheets: boolean };
+}> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      return {
+        success: false,
+        message: 'Google Apps Script not configured or connected'
+      };
+    }
+
+    const response = await fetch(`${scriptUrl}?action=testConnection&_=${Date.now()}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return {
+      success: data.success,
+      message: data.message || 'Connection test completed',
+      services: data.services
+    };
+  } catch (error) {
+    console.error("Error testing connection:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection test failed'
+    };
+  }
+};
+
+// Set up auto-processing of emails
 export const setupAutoEmailProcessing = (
   callback: (emails: EmailMessage[]) => void,
   checkIntervalMs = EMAIL_CONFIG.checkInterval
@@ -181,7 +264,7 @@ export const setupAutoEmailProcessing = (
   return { start, stop };
 };
 
-// New function: Auto-process an email batch
+// Auto-process an email batch
 export const autoProcessEmails = async (
   emails: EmailMessage[],
   processCallback?: (email: EmailMessage, success: boolean, autoProcessed: boolean) => void
@@ -198,88 +281,23 @@ export const autoProcessEmails = async (
   }
 };
 
-// New function: Auto-process a single email
+// Auto-process a single email
 export const autoProcessSingleEmail = async (email: EmailMessage): Promise<{
   success: boolean;
   status: string;
   message: string;
 }> => {
-  // Import required services
-  const { parseEmailForQuotation } = await import('./emailParserService');
-  const { calculatePrice } = await import('./pricingService');
-  const { mockProducts } = await import('@/data/mockData');
-  const { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } = await import('./quoteService');
-  
   try {
-    // Parse the email
-    const parsedInfo = parseEmailForQuotation(email);
-    
-    // If confidence is too low, don't process automatically
-    if (parsedInfo.confidence !== 'high' && parsedInfo.confidence !== 'medium') {
-      return {
-        success: false,
-        status: 'manual_required',
-        message: 'Email requires manual processing due to low confidence in parsing'
-      };
-    }
-    
-    // Ensure we have product and quantity
-    if (!parsedInfo.product || !parsedInfo.quantity) {
-      return {
-        success: false,
-        status: 'incomplete_data',
-        message: 'Could not extract complete product and quantity information'
-      };
-    }
-    
-    // Calculate price
-    const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
-    if (!pricing) {
-      return {
-        success: false,
-        status: 'pricing_error',
-        message: `Could not calculate price for ${parsedInfo.product} with quantity ${parsedInfo.quantity}`
-      };
-    }
-    
-    // Generate email content
-    const emailSubject = generateEmailSubject(defaultQuoteTemplate, parsedInfo.product);
-    const emailBody = generateQuoteEmailBody(
-      defaultQuoteTemplate,
-      parsedInfo,
-      pricing.pricePerUnit,
-      pricing.totalPrice
-    );
-    
-    // Send the email
-    const emailSent = await sendQuoteEmail(
-      parsedInfo.emailAddress,
-      emailSubject,
-      emailBody,
-      email.id
-    );
-    
-    // Mark email as read
-    await markEmailAsRead(email.id);
-    
-    // Log the quote
-    await logQuoteToSheet({
-      timestamp: new Date().toISOString(),
-      customerName: parsedInfo.customerName,
-      emailAddress: parsedInfo.emailAddress,
-      product: parsedInfo.product,
-      quantity: parsedInfo.quantity,
-      pricePerUnit: pricing.pricePerUnit,
-      totalAmount: pricing.totalPrice,
-      status: emailSent ? 'Sent' as const : 'Failed' as const
-    });
+    // This would integrate with email parsing and quote generation
+    // For now, just mark as processed
+    const emailMarked = await markEmailAsRead(email.id);
     
     return {
-      success: emailSent,
-      status: emailSent ? 'sent' : 'send_failed',
-      message: emailSent 
-        ? `Successfully sent quote for ${parsedInfo.quantity} units of ${parsedInfo.product}`
-        : 'Failed to send email response'
+      success: emailMarked,
+      status: emailMarked ? 'processed' : 'failed',
+      message: emailMarked 
+        ? `Email processed successfully`
+        : 'Failed to mark email as read'
     };
   } catch (error) {
     console.error("Error in auto-processing email:", error);

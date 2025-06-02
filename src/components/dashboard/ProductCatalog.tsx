@@ -4,62 +4,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
 import { Search, Upload, Plus, Trash2, RefreshCw, Package, FileSpreadsheet, Edit, Save, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  fetchProductsFromSheets, 
-  addProduct, 
-  updateProduct, 
-  deleteProduct, 
-  importProductsFromFile 
-} from "@/services/productService";
-
-// Sample products in your new format
-const initialProducts: Product[] = [
-  {
-    id: "1",
-    brand: "",
-    name: "ZTA-500N- Digital Force Gauge",
-    productCode: "ZTA-500N",
-    unitPrice: 83200.00,
-    gstRate: 18.00,
-    category: "Testing Equipment"
-  },
-  {
-    id: "2",
-    brand: "Other",
-    name: "zero plate Non-Ferrous",
-    productCode: "zero plate Non-Ferrous",
-    unitPrice: 1800.00,
-    gstRate: 18.00,
-    category: "Calibration Tools"
-  },
-  {
-    id: "3",
-    brand: "Jafuji",
-    name: "Zero plate Non furrous",
-    productCode: "Zero plate Non furrous",
-    unitPrice: 650.00,
-    gstRate: 18.00,
-    category: "Calibration Tools"
-  },
-  {
-    id: "4",
-    brand: "Jafuji", 
-    name: "Zero Plate furrous",
-    productCode: "Zero Plate furrous",
-    unitPrice: 650.00,
-    gstRate: 18.00,
-    category: "Calibration Tools"
-  }
-];
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function ProductCatalog() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>(initialProducts);
+  const { user } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(false);
@@ -67,10 +23,64 @@ export function ProductCatalog() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50); // For handling large datasets
+  const [itemsPerPage] = useState(50);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // Load user's products from database
+  useEffect(() => {
+    if (user) {
+      loadUserProducts();
+    }
+  }, [user]);
+
+  const loadUserProducts = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_products')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading products:', error);
+        toast({
+          title: "Error Loading Products",
+          description: "Failed to load your products. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const userProducts: Product[] = (data || []).map(item => ({
+        id: item.id,
+        brand: item.brand || '',
+        name: item.name,
+        productCode: item.product_code,
+        unitPrice: Number(item.unit_price),
+        gstRate: Number(item.gst_rate),
+        minQuantity: item.min_quantity || 1,
+        maxQuantity: item.max_quantity || 999,
+        category: item.category || 'General'
+      }));
+
+      setProducts(userProducts);
+      console.log(`Loaded ${userProducts.length} products for user`);
+    } catch (error) {
+      console.error('Error loading products:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load products. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Get unique brands for filtering
   const brands = useMemo(() => 
@@ -102,65 +112,11 @@ export function ProductCatalog() {
   }, [products, searchTerm, brandFilter, currentPage, itemsPerPage]);
 
   const handleSync = async () => {
-    setIsLoading(true);
-    try {
-      const syncedProducts = await fetchProductsFromSheets();
-      setProducts(syncedProducts);
-      toast({
-        title: "Sync Complete",
-        description: `Synchronized ${syncedProducts.length} products from Google Sheets.`
-      });
-    } catch (error) {
-      toast({
-        title: "Sync Failed", 
-        description: "Failed to sync with Google Sheets. Please check your connection.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFileUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    setIsImporting(true);
-    
-    try {
-      const result = await importProductsFromFile(file);
-      
-      if (result.success) {
-        toast({
-          title: "Import Successful",
-          description: `Imported ${result.importedCount} products. ${result.errors.length > 0 ? `${result.errors.length} errors encountered.` : ''}`
-        });
-        
-        // Refresh the product list
-        handleSync();
-      } else {
-        toast({
-          title: "Import Failed",
-          description: result.errors.join(', '),
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Import Error",
-        description: "Failed to process the file. Please check the format.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
+    await loadUserProducts();
+    toast({
+      title: "Sync Complete",
+      description: `Synchronized ${products.length} products from database.`
+    });
   };
 
   const handleAddProduct = () => {
@@ -184,7 +140,7 @@ export function ProductCatalog() {
   };
 
   const handleSave = async () => {
-    if (!editingId || !editForm.name || !editForm.productCode) {
+    if (!editingId || !editForm.name || !editForm.productCode || !user) {
       toast({
         title: "Validation Error",
         description: "Product name and code are required.",
@@ -195,13 +151,64 @@ export function ProductCatalog() {
 
     try {
       if (editingId.startsWith('new-')) {
-        // Add new product
-        const newProduct = await addProduct(editForm as Omit<Product, 'id'>);
+        // Add new product to database
+        const { data, error } = await supabase
+          .from('user_products')
+          .insert({
+            user_id: user.id,
+            brand: editForm.brand || '',
+            name: editForm.name,
+            product_code: editForm.productCode,
+            unit_price: editForm.unitPrice || 0,
+            gst_rate: editForm.gstRate || 18,
+            min_quantity: editForm.minQuantity || 1,
+            max_quantity: editForm.maxQuantity || 999,
+            category: editForm.category || 'General'
+          })
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        // Update local state with the new product
+        const newProduct: Product = {
+          id: data.id,
+          brand: data.brand || '',
+          name: data.name,
+          productCode: data.product_code,
+          unitPrice: Number(data.unit_price),
+          gstRate: Number(data.gst_rate),
+          minQuantity: data.min_quantity || 1,
+          maxQuantity: data.max_quantity || 999,
+          category: data.category || 'General'
+        };
+
         setProducts(products.map(p => p.id === editingId ? newProduct : p));
       } else {
-        // Update existing product
-        const updatedProduct = await updateProduct(editingId, editForm);
-        setProducts(products.map(p => p.id === editingId ? { ...p, ...updatedProduct } : p));
+        // Update existing product in database
+        const { error } = await supabase
+          .from('user_products')
+          .update({
+            brand: editForm.brand || '',
+            name: editForm.name,
+            product_code: editForm.productCode,
+            unit_price: editForm.unitPrice || 0,
+            gst_rate: editForm.gstRate || 18,
+            min_quantity: editForm.minQuantity || 1,
+            max_quantity: editForm.maxQuantity || 999,
+            category: editForm.category || 'General',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingId)
+          .eq('user_id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setProducts(products.map(p => p.id === editingId ? { ...p, ...editForm } as Product : p));
       }
 
       toast({
@@ -212,6 +219,7 @@ export function ProductCatalog() {
       setEditingId(null);
       setEditForm({});
     } catch (error) {
+      console.error('Error saving product:', error);
       toast({
         title: "Save Failed",
         description: "Failed to save product. Please try again.",
@@ -229,14 +237,26 @@ export function ProductCatalog() {
   };
 
   const handleDelete = async (productId: string) => {
+    if (!user) return;
+
     try {
-      await deleteProduct(productId);
+      const { error } = await supabase
+        .from('user_products')
+        .delete()
+        .eq('id', productId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
       setProducts(products.filter(p => p.id !== productId));
       toast({
         title: "Product Deleted",
         description: "Product has been removed from catalog."
       });
     } catch (error) {
+      console.error('Error deleting product:', error);
       toast({
         title: "Delete Failed",
         description: "Failed to delete product. Please try again.",
@@ -244,6 +264,44 @@ export function ProductCatalog() {
       });
     }
   };
+
+  const handleFileUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+    
+    setIsImporting(true);
+    
+    try {
+      // Import logic would go here
+      toast({
+        title: "Import Feature",
+        description: "File import feature coming soon!",
+      });
+    } catch (error) {
+      toast({
+        title: "Import Error",
+        description: "Failed to process the file. Please check the format.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-slate-600">Please log in to view your product catalog.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -262,7 +320,7 @@ export function ProductCatalog() {
             className="border-slate-200"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Syncing...' : 'Sync'}
+            {isLoading ? 'Loading...' : 'Refresh'}
           </Button>
           <Button 
             variant="outline" 
@@ -504,7 +562,7 @@ export function ProductCatalog() {
             </div>
           )}
           
-          {filteredProducts.length === 0 && (
+          {filteredProducts.length === 0 && !isLoading && (
             <div className="text-center py-12 text-slate-500">
               <Package className="h-12 w-12 mx-auto mb-4 text-slate-300" />
               <h3 className="text-lg font-medium mb-2">No products found</h3>

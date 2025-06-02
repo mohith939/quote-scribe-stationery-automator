@@ -9,6 +9,42 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      gmail_connections: {
+        Row: {
+          access_token: string | null
+          created_at: string | null
+          email_address: string | null
+          id: string
+          is_connected: boolean | null
+          last_sync_time: string | null
+          refresh_token: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string | null
+          email_address?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_time?: string | null
+          refresh_token?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string | null
+          email_address?: string | null
+          id?: string
+          is_connected?: boolean | null
+          last_sync_time?: string | null
+          refresh_token?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       google_apps_script_config: {
         Row: {
           created_at: string | null
@@ -34,6 +70,78 @@ export type Database = {
           is_connected?: boolean | null
           last_sync_time?: string | null
           script_url?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_products: {
+        Row: {
+          brand: string | null
+          category: string | null
+          created_at: string | null
+          gst_rate: number
+          id: string
+          max_quantity: number | null
+          min_quantity: number | null
+          name: string
+          product_code: string
+          unit_price: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          brand?: string | null
+          category?: string | null
+          created_at?: string | null
+          gst_rate?: number
+          id?: string
+          max_quantity?: number | null
+          min_quantity?: number | null
+          name: string
+          product_code: string
+          unit_price?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          brand?: string | null
+          category?: string | null
+          created_at?: string | null
+          gst_rate?: number
+          id?: string
+          max_quantity?: number | null
+          min_quantity?: number | null
+          name?: string
+          product_code?: string
+          unit_price?: number
           updated_at?: string | null
           user_id?: string
         }
