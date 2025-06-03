@@ -139,6 +139,83 @@ export const sendTemplateEmail = async (
   }
 };
 
+// Send a quote email (alias for sendTemplateEmail)
+export const sendQuoteEmail = async (
+  to: string,
+  subject: string,
+  body: string
+): Promise<boolean> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured');
+    }
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'sendEmail',
+        to,
+        subject,
+        body
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to send email: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.success;
+  } catch (error) {
+    console.error("Error sending quote email:", error);
+    return false;
+  }
+};
+
+// Log quote to Google Sheets
+export const logQuoteToSheet = async (quoteData: {
+  timestamp: string;
+  customerName: string;
+  emailAddress: string;
+  product: string;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  status: 'Sent' | 'Failed';
+}): Promise<boolean> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured');
+    }
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'logQuote',
+        quoteData
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to log quote: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.success;
+  } catch (error) {
+    console.error("Error logging quote to sheet:", error);
+    return false;
+  }
+};
+
 // Test the Google Apps Script connection
 export const testGoogleAppsScriptConnection = async (): Promise<{
   success: boolean;

@@ -13,6 +13,8 @@ interface UserProfile {
   user_id: string;
   full_name: string | null;
   email: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export function UserProfileManager() {
@@ -50,6 +52,7 @@ export function UserProfileManager() {
       } else {
         // Create profile if it doesn't exist
         const newProfile = {
+          id: user.id, // Use user ID as the profile ID
           user_id: user.id,
           full_name: user.user_metadata?.full_name || '',
           email: user.email || ''
