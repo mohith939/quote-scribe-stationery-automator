@@ -1,3 +1,4 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -37,7 +38,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
 
     console.log('Fetching emails from:', scriptUrl);
     
-    const response = await fetch(`${scriptUrl}?action=getUnreadEmails&_=${Date.now()}`, {
+    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=500&_=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -49,18 +50,18 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
     }
     
     const responseText = await response.text();
-    console.log('Raw response:', responseText);
+    console.log('Raw response length:', responseText.length);
     
     // Check if response is HTML (error page) or JSON
     if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
-      throw new Error('Google Apps Script returned an HTML error page. Please check your script deployment settings.');
+      throw new Error('Google Apps Script returned an HTML error page. Please check your script deployment settings and ensure it\'s deployed as a web app with proper permissions.');
     }
     
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('Failed to parse response as JSON:', responseText);
+      console.error('Failed to parse response as JSON:', responseText.substring(0, 500));
       
       // If it's not JSON but contains success indicators, treat as success with empty emails
       if (responseText.includes('QuoteScribe Gmail Integration Active')) {
@@ -71,14 +72,19 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
     }
     
-    console.log('Gmail API response:', data);
+    console.log('Gmail API response summary:', {
+      success: data.success,
+      emailCount: data.emails?.length || 0,
+      totalCount: data.totalCount,
+      hasMoreEmails: data.hasMoreEmails
+    });
     
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
     // Map the enhanced email data with all the new fields
-    return (data.emails || []).map((email: any) => ({
+    const emails = (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
       to: email.to,
@@ -91,6 +97,9 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       hasAttachments: email.hasAttachments || false,
       snippet: email.snippet || email.body?.substring(0, 200) + '...'
     }));
+
+    console.log(`Successfully fetched ${emails.length} unread emails`);
+    return emails;
   } catch (error) {
     console.error("Error fetching unread emails:", error);
     throw error;
@@ -249,6 +258,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
   success: boolean;
   message: string;
   services?: { gmail: boolean; sheets: boolean };
+  emailCount?: number;
 }> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -279,7 +289,8 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     return {
       success: data.success,
       message: data.message || 'Connection test completed',
-      services: data.services
+      services: data.services,
+      emailCount: data.emailCount
     };
   } catch (error) {
     console.error("Error testing connection:", error);

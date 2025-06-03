@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,8 +51,10 @@ export function GoogleAppsScriptIntegration() {
     const userEmail = user?.email || 'your-business-email@gmail.com';
     
     return `/**
- * Gmail Integration Script for QuoteScribe - FIXED VERSION
+ * Enhanced Gmail Integration Script for QuoteScribe - UPDATED VERSION
  * Deploy this as a web app and use the URL in QuoteScribe settings
+ * 
+ * IMPORTANT: This version fetches ALL unread emails, not just recent ones
  * 
  * Instructions:
  * 1. Go to script.google.com
@@ -67,7 +70,7 @@ const CONFIG = {
   sheetId: 'YOUR_GOOGLE_SHEET_ID_HERE', // Replace with your Google Sheets ID
   companyName: 'Your Company Name',
   contactInfo: '${userEmail}',
-  maxEmailsToFetch: 50 // Increased limit to fetch more emails
+  maxEmailsToFetch: 500 // Increased limit to fetch more emails
 };
 
 function doGet(e) {
@@ -77,7 +80,8 @@ function doGet(e) {
     
     switch (action) {
       case 'getUnreadEmails':
-        return getUnreadEmails();
+      case 'getAllUnreadEmails':
+        return getAllUnreadEmails(params.maxResults);
       case 'testConnection':
         return testConnection();
       default:
@@ -127,67 +131,79 @@ function doPost(e) {
   }
 }
 
-function getUnreadEmails() {
+function getAllUnreadEmails(maxResults) {
   try {
-    Logger.log('Fetching unread emails for: ' + CONFIG.targetEmail);
+    const limit = parseInt(maxResults) || CONFIG.maxEmailsToFetch;
+    Logger.log('Fetching ALL unread emails with limit: ' + limit);
     
-    // Search for unread emails - removed the isImportant check that was causing errors
-    const threads = GmailApp.search('is:unread to:' + CONFIG.targetEmail, 0, CONFIG.maxEmailsToFetch);
+    // Search for ALL unread emails in the inbox (removed target email restriction)
+    const threads = GmailApp.search('is:unread in:inbox', 0, limit);
     const emails = [];
     
     Logger.log('Found ' + threads.length + ' unread threads');
     
-    threads.forEach(thread => {
-      const messages = thread.getMessages();
-      messages.forEach(message => {
-        if (message.isUnread()) {
-          try {
-            // Get attachments info
-            const attachments = message.getAttachments();
-            const attachmentInfo = attachments.map(attachment => ({
-              name: attachment.getName(),
-              type: attachment.getContentType(),
-              size: attachment.getSize()
-            }));
-            
-            // Get both plain and HTML body
-            const plainBody = message.getPlainBody();
-            const htmlBody = message.getBody();
-            
-            emails.push({
-              id: message.getId(),
-              from: message.getFrom(),
-              to: message.getTo(),
-              subject: message.getSubject(),
-              body: plainBody,
-              htmlBody: htmlBody,
-              date: message.getDate().toISOString(),
-              threadId: message.getThread().getId(),
-              attachments: attachmentInfo,
-              hasAttachments: attachments.length > 0,
-              snippet: message.getPlainBody().substring(0, 200) + '...'
-            });
-          } catch (msgError) {
-            Logger.log('Error processing message: ' + msgError.toString());
+    threads.forEach(function(thread, threadIndex) {
+      try {
+        const messages = thread.getMessages();
+        
+        // Process all unread messages in each thread
+        messages.forEach(function(message, messageIndex) {
+          if (message.isUnread()) {
+            try {
+              // Get attachments info
+              const attachments = message.getAttachments();
+              const attachmentInfo = attachments.map(function(attachment) {
+                return {
+                  name: attachment.getName(),
+                  type: attachment.getContentType(),
+                  size: attachment.getSize()
+                };
+              });
+              
+              // Get both plain and HTML body
+              const plainBody = message.getPlainBody();
+              const htmlBody = message.getBody();
+              
+              emails.push({
+                id: message.getId(),
+                from: message.getFrom(),
+                to: message.getTo(),
+                subject: message.getSubject(),
+                body: plainBody,
+                htmlBody: htmlBody,
+                date: message.getDate().toISOString(),
+                threadId: message.getThread().getId(),
+                attachments: attachmentInfo,
+                hasAttachments: attachments.length > 0,
+                snippet: plainBody.substring(0, 200) + '...'
+              });
+            } catch (msgError) {
+              Logger.log('Error processing message ' + messageIndex + ' in thread ' + threadIndex + ': ' + msgError.toString());
+            }
           }
-        }
-      });
+        });
+      } catch (threadError) {
+        Logger.log('Error processing thread ' + threadIndex + ': ' + threadError.toString());
+      }
     });
     
-    Logger.log('Processed ' + emails.length + ' unread emails');
+    Logger.log('Successfully processed ' + emails.length + ' unread emails');
     
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
       emails: emails,
       timestamp: new Date().toISOString(),
-      totalCount: emails.length
+      totalCount: emails.length,
+      threadsProcessed: threads.length,
+      hasMoreEmails: threads.length >= limit
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
     Logger.log('Error fetching emails: ' + error.toString());
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
-      error: 'Failed to fetch emails: ' + error.toString()
+      error: 'Failed to fetch emails: ' + error.toString(),
+      emails: []
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
@@ -279,8 +295,18 @@ function logQuoteToSheet(quoteData) {
 
 function testConnection() {
   try {
-    // Test Gmail access
-    const testSearch = GmailApp.search('', 0, 1);
+    // Test Gmail access and count unread emails
+    const unreadThreads = GmailApp.search('is:unread in:inbox', 0, 10);
+    let unreadCount = 0;
+    
+    unreadThreads.forEach(function(thread) {
+      const messages = thread.getMessages();
+      messages.forEach(function(message) {
+        if (message.isUnread()) {
+          unreadCount++;
+        }
+      });
+    });
     
     // Test Sheets access if configured
     let sheetAccess = false;
@@ -301,6 +327,7 @@ function testConnection() {
         gmail: true,
         sheets: sheetAccess
       },
+      emailCount: unreadCount,
       config: {
         targetEmail: CONFIG.targetEmail,
         hasSheetId: CONFIG.sheetId && CONFIG.sheetId !== 'YOUR_GOOGLE_SHEET_ID_HERE',
@@ -528,7 +555,7 @@ function testConnection() {
           </div>
         </div>
         <CardDescription>
-          Connect your Google Apps Script to enable email processing and Gmail integration
+          Connect your Google Apps Script to enable email processing and Gmail integration. Updated version fetches ALL unread emails.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -574,24 +601,24 @@ function testConnection() {
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Code className="h-4 w-4 mr-2" />
-                View Fixed Script Code
+                View Updated Script Code
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[80vh]">
               <DialogHeader>
-                <DialogTitle>Fixed Google Apps Script Code</DialogTitle>
+                <DialogTitle>Updated Google Apps Script Code - Enhanced Email Fetching</DialogTitle>
                 <DialogDescription>
-                  This is the corrected code that fixes the "message.isImportant is not a function" error. Your email ({user?.email}) is automatically configured.
+                  This updated version fetches ALL unread emails from your inbox, not just recent ones. It removes email filtering and increases the fetch limit to 500 emails.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Button onClick={copyToClipboard} variant="outline" size="sm">
-                    Copy Fixed Code
+                    Copy Updated Code
                   </Button>
                   <Button onClick={downloadCodeAsText} variant="outline" size="sm">
                     <Download className="h-4 w-4 mr-2" />
-                    Download Fixed Code
+                    Download Updated Code
                   </Button>
                 </div>
                 <Textarea
@@ -599,32 +626,30 @@ function testConnection() {
                   readOnly
                   className="min-h-[400px] font-mono text-sm"
                 />
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <h4 className="font-medium text-green-800 mb-2 flex items-center">
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Fixed Issues:
-                  </h4>
-                  <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
-                    <li>Removed the problematic message.isImportant() call</li>
-                    <li>Added proper error handling for message processing</li>
-                    <li>Increased email fetch limit to 50 emails</li>
-                    <li>Added HTML body content and attachment support</li>
-                    <li>Improved logging and debugging information</li>
-                  </ul>
-                </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <h4 className="font-medium text-blue-800 mb-2 flex items-center">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Setup Instructions:
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Enhanced Features:
                   </h4>
-                  <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-                    <li>Go to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="underline">script.google.com</a></li>
-                    <li>Delete your old project and create a new one</li>
-                    <li>Paste the FIXED code above (not your old code)</li>
-                    <li>Update the sheetId in CONFIG section with your Google Sheets ID</li>
-                    <li>Deploy as a NEW web app with "Execute as: Me" and "Access: Anyone"</li>
-                    <li>Copy the NEW web app URL and paste it above</li>
-                    <li>Click "Connect" to verify the setup</li>
+                  <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+                    <li>Fetches ALL unread emails in your inbox (up to 500)</li>
+                    <li>Removed email address filtering - gets emails sent to any address</li>
+                    <li>Improved error handling and logging</li>
+                    <li>Better thread and message processing</li>
+                    <li>Enhanced connection testing with email count</li>
+                  </ul>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h4 className="font-medium text-amber-800 mb-2 flex items-center">
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    IMPORTANT - Update Required:
+                  </h4>
+                  <ol className="text-sm text-amber-700 space-y-1 list-decimal list-inside">
+                    <li>Your current script only fetches 2 emails - you need to update it</li>
+                    <li>Replace your old Google Apps Script code with this new version</li>
+                    <li>Deploy as a NEW web app to get a fresh deployment</li>
+                    <li>Update the URL in QuoteScribe settings</li>
+                    <li>This version will fetch hundreds of unread emails instead of just 2</li>
                   </ol>
                 </div>
               </div>
@@ -633,7 +658,7 @@ function testConnection() {
           
           <Button variant="outline" size="sm" onClick={downloadCodeAsText}>
             <FileText className="h-4 w-4 mr-2" />
-            Download Fixed Code
+            Download Updated Code
           </Button>
         </div>
 
@@ -641,13 +666,13 @@ function testConnection() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-red-600" />
-              <span className="text-sm font-medium text-red-800">Error in Current Script</span>
+              <span className="text-sm font-medium text-red-800">Limited Email Fetching Detected</span>
             </div>
             <div className="text-xs text-red-700 mt-1">
-              <p>Your current Google Apps Script has errors. Please:</p>
+              <p>Your script is only fetching 2 emails out of hundreds. Please:</p>
               <ul className="list-disc pl-4 mt-1 space-y-1">
-                <li>Download the FIXED code above</li>
-                <li>Create a NEW Google Apps Script project</li>
+                <li>Download the UPDATED code above</li>
+                <li>Replace your old Google Apps Script completely</li>
                 <li>Deploy as a NEW web app</li>
                 <li>Use the new URL for connection</li>
               </ul>
@@ -662,7 +687,7 @@ function testConnection() {
               <span className="text-sm font-medium text-green-800">Integration Active</span>
             </div>
             <p className="text-xs text-green-700 mt-1">
-              Your Google Apps Script is connected and ready to fetch emails with attachments and HTML content.
+              Google Apps Script is connected. If you're still only getting 2 emails, please update to the new script code above.
             </p>
           </div>
         )}
