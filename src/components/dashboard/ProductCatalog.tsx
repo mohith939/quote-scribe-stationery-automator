@@ -23,8 +23,7 @@ import {
   fetchProductsFromDatabase, 
   searchProducts, 
   deleteProduct, 
-  deleteAllProducts,
-  importProductsFromFile 
+  deleteAllProducts
 } from "@/services/productService";
 import { ProductImportDialog } from "./ProductImportDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -89,42 +88,10 @@ export function ProductCatalog() {
     setCurrentPage(1); // Reset to first page when filtering
   };
 
-  const handleImport = async (file: File) => {
-    setIsLoading(true);
-    try {
-      console.log(`Starting import of file: ${file.name} (${file.size} bytes)`);
-      const result = await importProductsFromFile(file);
-      
-      if (result.success) {
-        toast({
-          title: "Import Successful",
-          description: `${result.importedCount} products imported successfully${result.errors.length > 0 ? ` with ${result.errors.length} errors` : ''}.`,
-        });
-        
-        if (result.errors.length > 0) {
-          console.log('Import errors:', result.errors);
-        }
-        
-        // Reload products to show the imported data
-        await loadProducts();
-      } else {
-        toast({
-          title: "Import Failed",
-          description: result.errors[0] || "Failed to import products.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Import error:', error);
-      toast({
-        title: "Import Error",
-        description: "An error occurred during import. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-      setShowImportDialog(false);
-    }
+  const handleImportComplete = async () => {
+    // Reload products after import
+    await loadProducts();
+    setShowImportDialog(false);
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -399,7 +366,7 @@ export function ProductCatalog() {
       <ProductImportDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
-        onImport={handleImport}
+        onImportComplete={handleImportComplete}
       />
 
       {/* Delete All Products Dialog */}
