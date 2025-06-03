@@ -40,33 +40,36 @@ export function GoogleAppsScriptIntegration() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
 
-  // Google Apps Script code template
-  const googleAppsScriptCode = `/**
+  // Google Apps Script code template - automatically uses logged-in user's email
+  const getGoogleAppsScriptCode = () => {
+    const userEmail = user?.email || 'your-business-email@gmail.com';
+    
+    return `/**
  * Gmail Integration Script for QuoteScribe
  * Deploy this as a web app and use the URL in QuoteScribe settings
  * 
  * Instructions:
  * 1. Go to script.google.com
  * 2. Create a new project and paste this code
- * 3. Update the CONFIG section below with your details
+ * 3. Update the CONFIG section below with your Google Sheets ID
  * 4. Deploy as a web app with "Execute as: Me" and "Access: Anyone"
  * 5. Copy the web app URL and paste it in QuoteScribe settings
  */
 
-// Your configuration - UPDATE THESE VALUES
+// Your configuration - UPDATE THE SHEET ID
 const CONFIG = {
-  targetEmail: 'your-business-email@gmail.com', // Email to monitor for quote requests
-  sheetId: 'your-google-sheet-id', // Your Google Sheets ID for logging quotes
+  targetEmail: '${userEmail}', // Automatically using your logged-in email
+  sheetId: 'YOUR_GOOGLE_SHEET_ID_HERE', // Replace with your Google Sheets ID
   companyName: 'Your Company Name',
-  contactInfo: 'your-contact@email.com'
+  contactInfo: '${userEmail}'
 };
 
 function doGet(e) {
   const action = e.parameter.action;
   
   switch (action) {
-    case 'fetchUnreadEmails':
-      return fetchUnreadEmails();
+    case 'getUnreadEmails':
+      return getUnreadEmails();
     case 'testConnection':
       return testConnection();
     default:
@@ -100,7 +103,7 @@ function doPost(e) {
   }
 }
 
-function fetchUnreadEmails() {
+function getUnreadEmails() {
   try {
     const threads = GmailApp.search('is:unread to:' + CONFIG.targetEmail, 0, 10);
     const emails = [];
@@ -229,7 +232,7 @@ function testConnection() {
     
     // Test Sheets access if configured
     let sheetAccess = false;
-    if (CONFIG.sheetId) {
+    if (CONFIG.sheetId && CONFIG.sheetId !== 'YOUR_GOOGLE_SHEET_ID_HERE') {
       try {
         SpreadsheetApp.openById(CONFIG.sheetId);
         sheetAccess = true;
@@ -248,7 +251,7 @@ function testConnection() {
       },
       config: {
         targetEmail: CONFIG.targetEmail,
-        hasSheetId: !!CONFIG.sheetId,
+        hasSheetId: CONFIG.sheetId && CONFIG.sheetId !== 'YOUR_GOOGLE_SHEET_ID_HERE',
         companyName: CONFIG.companyName
       }
     })).setMimeType(ContentService.MimeType.JSON);
@@ -270,6 +273,7 @@ function getConfig() {
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }`;
+  };
 
   // Load Google Apps Script configuration on component mount
   useEffect(() => {
@@ -418,6 +422,8 @@ function getConfig() {
   };
 
   const downloadCodeAsText = () => {
+    const googleAppsScriptCode = getGoogleAppsScriptCode();
+    
     // Create a blob with the code content
     const blob = new Blob([googleAppsScriptCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -438,6 +444,7 @@ function getConfig() {
   };
 
   const copyToClipboard = () => {
+    const googleAppsScriptCode = getGoogleAppsScriptCode();
     navigator.clipboard.writeText(googleAppsScriptCode);
     toast({
       title: "Code Copied",
@@ -540,7 +547,7 @@ function getConfig() {
               <DialogHeader>
                 <DialogTitle>Google Apps Script Code</DialogTitle>
                 <DialogDescription>
-                  Copy this code to your Google Apps Script project and deploy it as a web app
+                  Copy this code to your Google Apps Script project and deploy it as a web app. Your email ({user?.email}) is automatically configured.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -554,7 +561,7 @@ function getConfig() {
                   </Button>
                 </div>
                 <Textarea
-                  value={googleAppsScriptCode}
+                  value={getGoogleAppsScriptCode()}
                   readOnly
                   className="min-h-[400px] font-mono text-sm"
                 />
@@ -566,9 +573,9 @@ function getConfig() {
                   <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
                     <li>Go to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="underline">script.google.com</a></li>
                     <li>Create a new project and paste the code above</li>
-                    <li>Update the CONFIG section with your email and sheet ID</li>
+                    <li>Update the sheetId in CONFIG section with your Google Sheets ID</li>
                     <li>Deploy as a web app with "Execute as: Me" and "Access: Anyone"</li>
-                    <li>Copy the web app URL and paste it in the field above</li>
+                    <li>Copy the web app URL (must end with /exec) and paste it above</li>
                     <li>Click "Connect" to verify the setup</li>
                   </ol>
                 </div>

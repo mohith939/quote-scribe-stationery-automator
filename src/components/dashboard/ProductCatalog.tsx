@@ -11,6 +11,7 @@ import { Search, Upload, Plus, Trash2, RefreshCw, Package, FileSpreadsheet, Edit
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { ProductImportDialog } from "./ProductImportDialog";
 
 export function ProductCatalog() {
   const { user } = useAuth();
@@ -19,13 +20,12 @@ export function ProductCatalog() {
   const [searchTerm, setSearchTerm] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   // Load user's products from database
@@ -265,34 +265,9 @@ export function ProductCatalog() {
     }
   };
 
-  const handleFileUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !user) return;
-    
-    setIsImporting(true);
-    
-    try {
-      // Import logic would go here
-      toast({
-        title: "Import Feature",
-        description: "File import feature coming soon!",
-      });
-    } catch (error) {
-      toast({
-        title: "Import Error",
-        description: "Failed to process the file. Please check the format.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
+  const handleImportComplete = () => {
+    loadUserProducts();
+    setShowImportDialog(false);
   };
 
   if (!user) {
@@ -325,21 +300,11 @@ export function ProductCatalog() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={handleFileUploadClick}
-            disabled={isImporting}
+            onClick={() => setShowImportDialog(true)}
             className="border-slate-200"
           >
-            {isImporting ? (
-              <>
-                <Upload className="mr-2 h-4 w-4 animate-pulse" />
-                Importing...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Import CSV
-              </>
-            )}
+            <Upload className="mr-2 h-4 w-4" />
+            Import CSV
           </Button>
           <Button 
             size="sm"
@@ -576,13 +541,11 @@ export function ProductCatalog() {
         </CardContent>
       </Card>
 
-      {/* Hidden file input */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept=".xlsx,.xls,.csv" 
-        onChange={handleFileChange}
+      {/* Import Dialog */}
+      <ProductImportDialog 
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImportComplete={handleImportComplete}
       />
     </div>
   );

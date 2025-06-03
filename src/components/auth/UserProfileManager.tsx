@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { User, Save, Edit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 interface UserProfile {
   id: string;
@@ -19,6 +20,7 @@ interface UserProfile {
 
 export function UserProfileManager() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,15 +30,18 @@ export function UserProfileManager() {
   });
 
   const fetchUserProfile = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    if (!user) return;
 
+    try {
+      console.log('Fetching profile for user:', user.id, user.email);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
+
+      console.log('Profile data from DB:', data);
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching profile:', error);
@@ -46,17 +51,19 @@ export function UserProfileManager() {
       if (data) {
         setProfile(data);
         setFormData({
-          full_name: data.full_name || '',
+          full_name: data.full_name || user.user_metadata?.full_name || '',
           email: data.email || user.email || ''
         });
       } else {
         // Create profile if it doesn't exist
         const newProfile = {
-          id: user.id, // Use user ID as the profile ID
+          id: user.id,
           user_id: user.id,
-          full_name: user.user_metadata?.full_name || '',
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
           email: user.email || ''
         };
+
+        console.log('Creating new profile:', newProfile);
 
         const { data: createdProfile, error: createError } = await supabase
           .from('profiles')
@@ -67,6 +74,7 @@ export function UserProfileManager() {
         if (createError) {
           console.error('Error creating profile:', createError);
         } else {
+          console.log('Profile created:', createdProfile);
           setProfile(createdProfile);
           setFormData({
             full_name: createdProfile.full_name || '',
@@ -80,7 +88,7 @@ export function UserProfileManager() {
   };
 
   const updateUserProfile = async () => {
-    if (!profile) return;
+    if (!profile || !user) return;
 
     setIsLoading(true);
     try {
@@ -117,8 +125,22 @@ export function UserProfileManager() {
   };
 
   useEffect(() => {
-    fetchUserProfile();
-  }, []);
+    if (user) {
+      fetchUserProfile();
+    }
+  }, [user]);
+
+  if (!user) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-center py-4">
+            <p className="text-slate-600">Please log in to view your profile.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!profile) {
     return (
