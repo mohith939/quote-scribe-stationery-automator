@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -7,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from "@/types";
-import { Search, Upload, Plus, Trash2, RefreshCw, Package, FileSpreadsheet, Edit, Save, X } from "lucide-react";
+import { Search, Upload, Plus, Trash2, RefreshCw, Package, FileSpreadsheet, Edit, Save, X, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { ProductImportDialog } from "./ProductImportDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export function ProductCatalog() {
   const { user } = useAuth();
@@ -20,10 +20,11 @@ export function ProductCatalog() {
   const [searchTerm, setSearchTerm] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(100); // Increased from 50
+  const [itemsPerPage, setItemsPerPage] = useState(100);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   
@@ -52,7 +53,7 @@ export function ProductCatalog() {
       setTotalCount(count || 0);
       console.log(`Total products in database: ${count}`);
 
-      // Then load all products (removing limit to show all 32k products)
+      // Then load all products (removing limit to show all products)
       const { data, error } = await supabase
         .from('user_products')
         .select('*')
@@ -131,6 +132,40 @@ export function ProductCatalog() {
 
   const handleSync = async () => {
     await loadUserProducts();
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!user) return;
+
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('user_products')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setProducts([]);
+      setTotalCount(0);
+      setCurrentPage(1);
+      
+      toast({
+        title: "All Products Deleted",
+        description: "Successfully deleted all products from your catalog.",
+      });
+    } catch (error) {
+      console.error('Error deleting all products:', error);
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete all products. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleAddProduct = () => {
@@ -308,6 +343,40 @@ export function ProductCatalog() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button 
+                variant="outline" 
+                size="sm"
+                disabled={isDeleting || products.length === 0}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete All
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  Delete All Products
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete all {totalCount.toLocaleString()} products from your catalog.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteAllProducts}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete All Products'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <Button 
             variant="outline" 
             size="sm"

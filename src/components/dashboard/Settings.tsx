@@ -1,9 +1,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { GoogleAppsScriptIntegration } from "./GoogleAppsScriptIntegration";
-import { GmailSettings } from "./GmailSettings";
 import { UserProfileManager } from "../auth/UserProfileManager";
-import { Settings as SettingsIcon, User, Mail, Code } from "lucide-react";
+import { Settings as SettingsIcon, User, Code } from "lucide-react";
 
 export function Settings() {
   return (
@@ -15,7 +14,7 @@ export function Settings() {
             Settings & Configuration
           </CardTitle>
           <CardDescription>
-            Manage your account, integrations, and email automation settings
+            Manage your account and integrations
           </CardDescription>
         </CardHeader>
       </Card>
@@ -36,15 +35,6 @@ export function Settings() {
           Google Apps Script Integration
         </h3>
         <GoogleAppsScriptIntegration />
-      </div>
-
-      {/* Gmail Settings Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium flex items-center gap-2">
-          <Mail className="h-5 w-5" />
-          Gmail Configuration
-        </h3>
-        <GmailSettings />
       </div>
     </div>
   );
