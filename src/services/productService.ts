@@ -1,57 +1,58 @@
 
 import { Product } from "@/types";
 import * as XLSX from 'xlsx';
+import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Service for handling product catalog operations with Google Sheets integration
+ * Service for handling product catalog operations with Supabase integration
  */
 
-// Real products from Google Sheets - this will be populated from actual API
+// Cache for products
 let cachedProducts: Product[] = [];
 
 /**
- * Fetch products from Google Sheets using real API
+ * Fetch products from Supabase database
  */
-export const fetchProductsFromSheets = async (sheetId?: string): Promise<Product[]> => {
+export const fetchProductsFromDatabase = async (): Promise<Product[]> => {
   try {
-    // This would integrate with Google Sheets API using real credentials
-    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A:E?key=YOUR_API_KEY`);
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch from Google Sheets');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
     }
-    
-    const data = await response.json();
-    const rows = data.values;
-    
-    if (!rows || rows.length < 2) {
-      throw new Error('No data found in sheet');
+
+    const { data, error } = await supabase
+      .from('user_products')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching products:', error);
+      throw error;
     }
-    
-    // Skip header row and convert to products
-    const products: Product[] = rows.slice(1).map((row: string[], index: number) => ({
-      id: (index + 1).toString(),
-      brand: row[0] || '',
-      name: row[1] || '',
-      productCode: row[2] || '',
-      unitPrice: parseFloat(row[3]) || 0,
-      gstRate: parseFloat(row[4]) || 18,
-      minQuantity: 1,
-      maxQuantity: 999,
-      category: row[0] || 'General'
+
+    const products: Product[] = (data || []).map(item => ({
+      id: item.id,
+      brand: item.brand || '',
+      name: item.name,
+      productCode: item.product_code,
+      unitPrice: parseFloat(item.unit_price.toString()),
+      gstRate: parseFloat(item.gst_rate.toString()),
+      minQuantity: item.min_quantity || 1,
+      maxQuantity: item.max_quantity || 999,
+      category: item.category || 'General'
     }));
-    
+
     cachedProducts = products;
     return products;
   } catch (error) {
-    console.error("Error fetching products from sheets:", error);
-    // Return cached products if API fails
-    return cachedProducts.length > 0 ? cachedProducts : [];
+    console.error("Error fetching products from database:", error);
+    return cachedProducts;
   }
 };
 
 /**
- * Search products with fuzzy matching for better accuracy
+ * Search products with fuzzy matching
  */
 export const searchProducts = (
   products: Product[], 
@@ -62,14 +63,12 @@ export const searchProducts = (
   
   const term = searchTerm.toLowerCase();
   
-  // Exact matches first
   const exactMatches = products.filter(p => 
     p.name.toLowerCase().includes(term) ||
     p.productCode.toLowerCase().includes(term) ||
     p.brand.toLowerCase().includes(term)
   );
   
-  // Fuzzy matches for partial words
   const fuzzyMatches = products.filter(p => {
     const words = term.split(' ');
     return words.some(word => 
@@ -102,7 +101,7 @@ export const calculatePriceWithGST = (
 };
 
 /**
- * Import products from XLSX/CSV file - supporting your exact format
+ * Import products from XLSX/CSV file with batch processing for large datasets
  */
 export const importProductsFromFile = async (file: File): Promise<{
   success: boolean;
@@ -110,6 +109,11 @@ export const importProductsFromFile = async (file: File): Promise<{
   errors: string[];
 }> => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
@@ -121,10 +125,10 @@ export const importProductsFromFile = async (file: File): Promise<{
     }
     
     const headers = jsonData[0] as string[];
-    const products: Product[] = [];
+    const products: any[] = [];
     const errors: string[] = [];
     
-    // Map your exact column names
+    // Column mapping
     const columnMapping = {
       'Brand': 0,
       'Product Description': 1,
@@ -133,30 +137,31 @@ export const importProductsFromFile = async (file: File): Promise<{
       'GST Rate': 4
     };
     
+    // Process all rows
     for (let i = 1; i < jsonData.length; i++) {
       try {
         const row = jsonData[i] as any[];
         
         if (!row || row.length === 0) continue;
         
-        const product: Product = {
-          id: Date.now().toString() + i,
+        const product = {
+          user_id: user.id,
           brand: row[columnMapping['Brand']] || '',
           name: row[columnMapping['Product Description']] || '',
-          productCode: row[columnMapping['Product Code']] || '',
-          unitPrice: parseFloat(row[columnMapping['Unit Price']]) || 0,
-          gstRate: parseFloat(row[columnMapping['GST Rate']]) || 18,
-          minQuantity: 1,
-          maxQuantity: 999,
+          product_code: row[columnMapping['Product Code']] || '',
+          unit_price: parseFloat(row[columnMapping['Unit Price']]) || 0,
+          gst_rate: parseFloat(row[columnMapping['GST Rate']]) || 18,
+          min_quantity: 1,
+          max_quantity: 999,
           category: row[columnMapping['Brand']] || 'General'
         };
         
-        if (!product.name || !product.productCode) {
+        if (!product.name || !product.product_code) {
           errors.push(`Row ${i + 1}: Missing product name or code`);
           continue;
         }
         
-        if (isNaN(product.unitPrice) || product.unitPrice <= 0) {
+        if (isNaN(product.unit_price) || product.unit_price <= 0) {
           errors.push(`Row ${i + 1}: Invalid unit price`);
           continue;
         }
@@ -171,14 +176,40 @@ export const importProductsFromFile = async (file: File): Promise<{
       throw new Error('No valid products found in file');
     }
     
-    // Update cached products
-    cachedProducts = [...cachedProducts, ...products];
+    // Insert products in batches of 1000 to handle large datasets
+    const batchSize = 1000;
+    let totalInserted = 0;
     
-    console.log(`Successfully imported ${products.length} products`);
+    for (let i = 0; i < products.length; i += batchSize) {
+      const batch = products.slice(i, i + batchSize);
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_products')
+          .insert(batch)
+          .select('id');
+        
+        if (error) {
+          console.error(`Batch ${Math.floor(i/batchSize) + 1} error:`, error);
+          errors.push(`Batch ${Math.floor(i/batchSize) + 1}: ${error.message}`);
+        } else {
+          totalInserted += data?.length || 0;
+          console.log(`Batch ${Math.floor(i/batchSize) + 1} inserted: ${data?.length || 0} products`);
+        }
+      } catch (batchError) {
+        console.error(`Batch ${Math.floor(i/batchSize) + 1} failed:`, batchError);
+        errors.push(`Batch ${Math.floor(i/batchSize) + 1}: Failed to insert`);
+      }
+    }
+    
+    console.log(`Total products processed: ${products.length}, Total inserted: ${totalInserted}`);
+    
+    // Refresh cached products
+    await fetchProductsFromDatabase();
     
     return {
-      success: true,
-      importedCount: products.length,
+      success: totalInserted > 0,
+      importedCount: totalInserted,
       errors
     };
   } catch (error) {
@@ -192,27 +223,53 @@ export const importProductsFromFile = async (file: File): Promise<{
 };
 
 /**
- * Get cached products (for real-time usage)
+ * Get cached products
  */
 export const getCachedProducts = (): Product[] => {
   return cachedProducts;
 };
 
 /**
- * Add new product to catalog
+ * Add new product to database
  */
 export const addProduct = async (product: Omit<Product, 'id'>): Promise<Product> => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { data, error } = await supabase
+      .from('user_products')
+      .insert([{
+        user_id: user.id,
+        brand: product.brand,
+        name: product.name,
+        product_code: product.productCode,
+        unit_price: product.unitPrice,
+        gst_rate: product.gstRate,
+        min_quantity: product.minQuantity,
+        max_quantity: product.maxQuantity,
+        category: product.category
+      }])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
     const newProduct: Product = {
-      ...product,
-      id: Date.now().toString()
+      id: data.id,
+      brand: data.brand || '',
+      name: data.name,
+      productCode: data.product_code,
+      unitPrice: parseFloat(data.unit_price.toString()),
+      gstRate: parseFloat(data.gst_rate.toString()),
+      minQuantity: data.min_quantity || 1,
+      maxQuantity: data.max_quantity || 999,
+      category: data.category || 'General'
     };
     
     cachedProducts.push(newProduct);
-    
-    // This would add to Google Sheets via API
-    console.log("Adding product to Google Sheets:", newProduct);
-    
     return newProduct;
   } catch (error) {
     console.error("Error adding product:", error);
@@ -225,14 +282,50 @@ export const addProduct = async (product: Omit<Product, 'id'>): Promise<Product>
  */
 export const updateProduct = async (productId: string, updates: Partial<Product>): Promise<Product> => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const updateData: any = {};
+    if (updates.brand !== undefined) updateData.brand = updates.brand;
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.productCode !== undefined) updateData.product_code = updates.productCode;
+    if (updates.unitPrice !== undefined) updateData.unit_price = updates.unitPrice;
+    if (updates.gstRate !== undefined) updateData.gst_rate = updates.gstRate;
+    if (updates.minQuantity !== undefined) updateData.min_quantity = updates.minQuantity;
+    if (updates.maxQuantity !== undefined) updateData.max_quantity = updates.maxQuantity;
+    if (updates.category !== undefined) updateData.category = updates.category;
+
+    const { data, error } = await supabase
+      .from('user_products')
+      .update(updateData)
+      .eq('id', productId)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    const updatedProduct: Product = {
+      id: data.id,
+      brand: data.brand || '',
+      name: data.name,
+      productCode: data.product_code,
+      unitPrice: parseFloat(data.unit_price.toString()),
+      gstRate: parseFloat(data.gst_rate.toString()),
+      minQuantity: data.min_quantity || 1,
+      maxQuantity: data.max_quantity || 999,
+      category: data.category || 'General'
+    };
+    
+    // Update cached products
     const index = cachedProducts.findIndex(p => p.id === productId);
     if (index !== -1) {
-      cachedProducts[index] = { ...cachedProducts[index], ...updates };
+      cachedProducts[index] = updatedProduct;
     }
     
-    console.log("Updating product in Google Sheets:", productId, updates);
-    
-    return { ...updates, id: productId } as Product;
+    return updatedProduct;
   } catch (error) {
     console.error("Error updating product:", error);
     throw error;
@@ -240,13 +333,25 @@ export const updateProduct = async (productId: string, updates: Partial<Product>
 };
 
 /**
- * Delete product from catalog
+ * Delete product from database
  */
 export const deleteProduct = async (productId: string): Promise<boolean> => {
   try {
-    cachedProducts = cachedProducts.filter(p => p.id !== productId);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { error } = await supabase
+      .from('user_products')
+      .delete()
+      .eq('id', productId)
+      .eq('user_id', user.id);
     
-    console.log("Deleting product from Google Sheets:", productId);
+    if (error) throw error;
+    
+    // Update cached products
+    cachedProducts = cachedProducts.filter(p => p.id !== productId);
     
     return true;
   } catch (error) {
@@ -254,3 +359,33 @@ export const deleteProduct = async (productId: string): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * Delete all products for the current user
+ */
+export const deleteAllProducts = async (): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { error } = await supabase
+      .from('user_products')
+      .delete()
+      .eq('user_id', user.id);
+    
+    if (error) throw error;
+    
+    // Clear cached products
+    cachedProducts = [];
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting all products:", error);
+    return false;
+  }
+};
+
+// Legacy functions for backward compatibility
+export const fetchProductsFromSheets = fetchProductsFromDatabase;

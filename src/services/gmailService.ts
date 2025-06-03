@@ -1,3 +1,4 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -37,7 +38,8 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
 
     console.log('Fetching emails from:', scriptUrl);
     
-    const response = await fetch(`${scriptUrl}?action=getUnreadEmails&_=${Date.now()}`, {
+    // Use the correct action name that matches the Google Apps Script
+    const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -49,11 +51,17 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
     }
     
     const responseText = await response.text();
-    console.log('Raw response:', responseText);
+    console.log('Raw response:', responseText.substring(0, 500) + '...');
     
     // Check if response is HTML (error page) or JSON
-    if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
-      throw new Error('Google Apps Script returned an HTML error page. Please check your script deployment settings.');
+    if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>') || responseText.includes('<HTML>')) {
+      throw new Error('Google Apps Script returned an HTML error page. Please ensure your script is deployed as a web app with "Execute as: Me" and "Access: Anyone" permissions.');
+    }
+    
+    // Check if it's a simple success message without JSON
+    if (responseText.includes('QuoteScribe Gmail Integration Active')) {
+      console.log('Script is active but returned status message, treating as no emails found');
+      return [];
     }
     
     let data;
@@ -61,14 +69,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       data = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse response as JSON:', responseText);
-      
-      // If it's not JSON but contains success indicators, treat as success with empty emails
-      if (responseText.includes('QuoteScribe Gmail Integration Active')) {
-        console.log('Script is active but returned non-JSON response, treating as no emails found');
-        return [];
-      }
-      
-      throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
+      throw new Error('Invalid JSON response from Google Apps Script. Response: ' + responseText.substring(0, 200));
     }
     
     console.log('Gmail API response:', data);
@@ -77,14 +78,14 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
-    // Map the enhanced email data with all the new fields
+    // Map the email data with enhanced fields
     return (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
-      to: email.to,
+      to: email.to || '',
       subject: email.subject,
       body: email.body,
-      htmlBody: email.htmlBody,
+      htmlBody: email.htmlBody || '',
       date: email.date,
       threadId: email.threadId,
       attachments: email.attachments || [],
@@ -128,46 +129,7 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   }
 };
 
-// Send a quote email response using templates
-export const sendTemplateEmail = async (
-  to: string, 
-  templateId: string,
-  templateData: any,
-  originalEmailId?: string
-): Promise<boolean> => {
-  try {
-    const scriptUrl = await getGoogleAppsScriptUrl();
-    if (!scriptUrl) {
-      throw new Error('Google Apps Script not configured');
-    }
-
-    const response = await fetch(scriptUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'sendTemplateEmail',
-        to,
-        templateId,
-        templateData,
-        originalEmailId
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to send email: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data.success;
-  } catch (error) {
-    console.error("Error sending template email:", error);
-    return false;
-  }
-};
-
-// Send a quote email (alias for sendTemplateEmail)
+// Send a quote email
 export const sendQuoteEmail = async (
   to: string,
   subject: string,
@@ -271,7 +233,16 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
       return {
         success: false,
-        message: 'Google Apps Script returned an HTML error page. Please check your script deployment settings and ensure it\'s deployed as a web app with proper permissions.'
+        message: 'Google Apps Script returned an HTML error page. Please check your script deployment settings and ensure it\'s deployed as a web app with "Execute as: Me" and "Access: Anyone" permissions.'
+      };
+    }
+    
+    // Check for simple success message
+    if (responseText.includes('QuoteScribe Gmail Integration Active')) {
+      return {
+        success: true,
+        message: 'Google Apps Script is active and connected',
+        services: { gmail: true, sheets: true }
       };
     }
     
@@ -289,3 +260,6 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     };
   }
 };
+
+// Legacy function aliases
+export const sendTemplateEmail = sendQuoteEmail;
