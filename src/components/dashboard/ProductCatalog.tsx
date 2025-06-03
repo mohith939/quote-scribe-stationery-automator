@@ -23,12 +23,13 @@ export function ProductCatalog() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(100); // Increased from 50
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   
   const { toast } = useToast();
 
-  // Load user's products from database
+  // Load user's products from database with improved pagination
   useEffect(() => {
     if (user) {
       loadUserProducts();
@@ -40,6 +41,18 @@ export function ProductCatalog() {
     
     setIsLoading(true);
     try {
+      console.log('Loading products for user:', user.id);
+      
+      // First get the total count
+      const { count } = await supabase
+        .from('user_products')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+
+      setTotalCount(count || 0);
+      console.log(`Total products in database: ${count}`);
+
+      // Then load all products (removing limit to show all 32k products)
       const { data, error } = await supabase
         .from('user_products')
         .select('*')
@@ -69,7 +82,12 @@ export function ProductCatalog() {
       }));
 
       setProducts(userProducts);
-      console.log(`Loaded ${userProducts.length} products for user`);
+      console.log(`Loaded ${userProducts.length} products for user (Total in DB: ${count})`);
+      
+      toast({
+        title: "Products Loaded",
+        description: `Successfully loaded ${userProducts.length} products from your catalog.`,
+      });
     } catch (error) {
       console.error('Error loading products:', error);
       toast({
@@ -88,7 +106,7 @@ export function ProductCatalog() {
     [products]
   );
 
-  // Filter and paginate products
+  // Filter and paginate products with better performance
   const { paginatedProducts, totalPages } = useMemo(() => {
     let filtered = products.filter(product => {
       const matchesSearch = 
@@ -113,10 +131,6 @@ export function ProductCatalog() {
 
   const handleSync = async () => {
     await loadUserProducts();
-    toast({
-      title: "Sync Complete",
-      description: `Synchronized ${products.length} products from database.`
-    });
   };
 
   const handleAddProduct = () => {
@@ -284,7 +298,14 @@ export function ProductCatalog() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Product Catalog</h2>
-          <p className="text-slate-600 mt-1">Manage your products, pricing, and inventory information</p>
+          <p className="text-slate-600 mt-1">
+            Manage your products, pricing, and inventory information
+            {totalCount > 0 && (
+              <span className="ml-2 text-blue-600 font-medium">
+                ({totalCount.toLocaleString()} total products)
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Button 
@@ -345,8 +366,20 @@ export function ProductCatalog() {
               </SelectContent>
             </Select>
 
+            <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(Number(value))}>
+              <SelectTrigger className="w-32 bg-white border-slate-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="50">50 per page</SelectItem>
+                <SelectItem value="100">100 per page</SelectItem>
+                <SelectItem value="200">200 per page</SelectItem>
+                <SelectItem value="500">500 per page</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-              {filteredProducts.length} Products
+              {filteredProducts.length.toLocaleString()} Products
             </Badge>
           </div>
         </CardContent>
@@ -501,7 +534,7 @@ export function ProductCatalog() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-slate-600">
-                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredProducts.length)} of {filteredProducts.length} products
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredProducts.length)} of {filteredProducts.length.toLocaleString()} products
               </div>
               <div className="flex items-center gap-2">
                 <Button

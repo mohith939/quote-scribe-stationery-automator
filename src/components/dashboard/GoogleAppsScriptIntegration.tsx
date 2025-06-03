@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,7 @@ export function GoogleAppsScriptIntegration() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
 
-  // Google Apps Script code template - automatically uses logged-in user's email
+  // Corrected Google Apps Script code template
   const getGoogleAppsScriptCode = () => {
     const userEmail = user?.email || 'your-business-email@gmail.com';
     
@@ -65,20 +64,34 @@ const CONFIG = {
 };
 
 function doGet(e) {
-  const action = e.parameter.action;
-  
-  switch (action) {
-    case 'getUnreadEmails':
-      return getUnreadEmails();
-    case 'testConnection':
-      return testConnection();
-    default:
-      return ContentService.createTextOutput('QuoteScribe Gmail Integration Active - ' + new Date().toISOString());
+  try {
+    // Safely handle cases where e or e.parameter might be undefined
+    const params = e && e.parameter ? e.parameter : {};
+    const action = params.action || 'default';
+    
+    switch (action) {
+      case 'getUnreadEmails':
+        return getUnreadEmails();
+      case 'testConnection':
+        return testConnection();
+      default:
+        return ContentService.createTextOutput('QuoteScribe Gmail Integration Active - ' + new Date().toISOString());
+    }
+  } catch (error) {
+    Logger.log('doGet error: ' + error.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: 'doGet error: ' + error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function doPost(e) {
   try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error('No POST data received');
+    }
+    
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
     
@@ -96,6 +109,7 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (error) {
+    Logger.log('doPost error: ' + error.toString());
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       error: 'Error processing request: ' + error.toString()
@@ -183,7 +197,7 @@ function sendQuoteEmail(to, subject, body) {
 
 function logQuoteToSheet(quoteData) {
   try {
-    if (!CONFIG.sheetId) {
+    if (!CONFIG.sheetId || CONFIG.sheetId === 'YOUR_GOOGLE_SHEET_ID_HERE') {
       throw new Error('Sheet ID not configured');
     }
     
@@ -264,15 +278,8 @@ function testConnection() {
       timestamp: new Date().toISOString()
     })).setMimeType(ContentService.MimeType.JSON);
   }
-}
-
-// Utility function to get configuration (for debugging)
-function getConfig() {
-  return ContentService.createTextOutput(JSON.stringify({
-    config: CONFIG,
-    timestamp: new Date().toISOString()
-  })).setMimeType(ContentService.MimeType.JSON);
 }`;
+
   };
 
   // Load Google Apps Script configuration on component mount
@@ -343,7 +350,6 @@ function getConfig() {
       });
       
       console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -547,7 +553,7 @@ function getConfig() {
               <DialogHeader>
                 <DialogTitle>Google Apps Script Code</DialogTitle>
                 <DialogDescription>
-                  Copy this code to your Google Apps Script project and deploy it as a web app. Your email ({user?.email}) is automatically configured.
+                  Copy this corrected code to your Google Apps Script project. Your email ({user?.email}) is automatically configured.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -572,7 +578,7 @@ function getConfig() {
                   </h4>
                   <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
                     <li>Go to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="underline">script.google.com</a></li>
-                    <li>Create a new project and paste the code above</li>
+                    <li>Create a new project and paste the corrected code above</li>
                     <li>Update the sheetId in CONFIG section with your Google Sheets ID</li>
                     <li>Deploy as a web app with "Execute as: Me" and "Access: Anyone"</li>
                     <li>Copy the web app URL (must end with /exec) and paste it above</li>
