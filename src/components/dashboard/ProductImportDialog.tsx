@@ -46,6 +46,21 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
     }
   };
 
+  const sanitizeNumeric = (value: any): number => {
+    if (value === null || value === undefined || value === '') return 0;
+    
+    const parsed = parseFloat(value.toString().replace(/[^\d.-]/g, ''));
+    
+    if (isNaN(parsed)) return 0;
+    
+    // Ensure the value is within PostgreSQL numeric field limits
+    // Max safe value for numeric fields is typically around 1e10
+    if (parsed > 1000000000) return 1000000000; // 1 billion max
+    if (parsed < 0) return 0; // No negative values for prices
+    
+    return Math.round(parsed * 100) / 100; // Round to 2 decimal places
+  };
+
   const importProductsFromFile = async (file: File): Promise<ImportResult> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -96,11 +111,11 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
           
           if (!row || row.length === 0) continue;
           
-          const brand = brandIndex >= 0 ? (row[brandIndex] || '').toString() : '';
-          const name = nameIndex >= 0 ? (row[nameIndex] || '').toString() : '';
-          const code = codeIndex >= 0 ? (row[codeIndex] || '').toString() : '';
-          const price = priceIndex >= 0 ? parseFloat(row[priceIndex]) || 0 : 0;
-          const gst = gstIndex >= 0 ? parseFloat(row[gstIndex]) || 18 : 18;
+          const brand = brandIndex >= 0 ? (row[brandIndex] || '').toString().trim() : '';
+          const name = nameIndex >= 0 ? (row[nameIndex] || '').toString().trim() : '';
+          const code = codeIndex >= 0 ? (row[codeIndex] || '').toString().trim() : '';
+          const price = priceIndex >= 0 ? sanitizeNumeric(row[priceIndex]) : 0;
+          const gst = gstIndex >= 0 ? sanitizeNumeric(row[gstIndex]) : 18;
           
           if (!name || !code) {
             errors.push(`Row ${i + 1}: Missing product name or code`);
@@ -108,20 +123,23 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
           }
           
           if (price <= 0) {
-            errors.push(`Row ${i + 1}: Invalid unit price`);
+            errors.push(`Row ${i + 1}: Invalid or missing unit price`);
             continue;
           }
+
+          // Validate GST rate
+          const validGst = Math.min(Math.max(gst, 0), 100); // Between 0 and 100%
           
           const product = {
             user_id: user.id,
-            brand,
-            name,
-            product_code: code,
+            brand: brand.substring(0, 255), // Limit string length
+            name: name.substring(0, 255),
+            product_code: code.substring(0, 100),
             unit_price: price,
-            gst_rate: gst,
+            gst_rate: validGst,
             min_quantity: 1,
             max_quantity: 999,
-            category: brand || 'General'
+            category: (brand || 'General').substring(0, 100)
           };
           
           products.push(product);
@@ -134,21 +152,31 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
         throw new Error('No valid products found in file');
       }
       
-      // Insert products into database
-      const { data, error } = await supabase
-        .from('user_products')
-        .insert(products)
-        .select();
+      // Insert products into database in batches to avoid timeouts
+      const batchSize = 50;
+      let successfulInserts = 0;
       
-      if (error) {
-        throw new Error(`Database error: ${error.message}`);
+      for (let i = 0; i < products.length; i += batchSize) {
+        const batch = products.slice(i, i + batchSize);
+        
+        const { data, error } = await supabase
+          .from('user_products')
+          .insert(batch)
+          .select('id');
+        
+        if (error) {
+          console.error(`Batch ${i / batchSize + 1} error:`, error);
+          errors.push(`Batch ${i / batchSize + 1}: ${error.message}`);
+        } else {
+          successfulInserts += data?.length || 0;
+        }
       }
       
-      console.log(`Successfully imported ${products.length} products`);
+      console.log(`Successfully imported ${successfulInserts} products`);
       
       return {
-        success: true,
-        importedCount: products.length,
+        success: successfulInserts > 0,
+        importedCount: successfulInserts,
         errors
       };
     } catch (error) {
@@ -251,6 +279,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
                     <li>GST Rate/Tax (optional, defaults to 18%)</li>
                   </ul>
                   <p className="mt-2 text-xs"><strong>Supported:</strong> .csv, .xlsx, .xls files</p>
+                  <p className="mt-1 text-xs"><strong>Note:</strong> Prices should be reasonable numbers (max 1 billion)</p>
                 </div>
               </div>
             </div>

@@ -49,7 +49,22 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log('Raw response:', responseText);
+    
+    // Check if response is HTML (error page) or JSON
+    if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
+      throw new Error('Google Apps Script returned an HTML error page. Please check your script deployment settings.');
+    }
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', responseText);
+      throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
+    }
+    
     console.log('Gmail API response:', data);
     
     if (!data.success) {
@@ -237,7 +252,17 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const responseText = await response.text();
+    
+    // Check if response is HTML (error page)
+    if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
+      return {
+        success: false,
+        message: 'Google Apps Script returned an HTML error page. Please check your script deployment settings and ensure it\'s deployed as a web app with proper permissions.'
+      };
+    }
+    
+    const data = JSON.parse(responseText);
     return {
       success: data.success,
       message: data.message || 'Connection test completed',

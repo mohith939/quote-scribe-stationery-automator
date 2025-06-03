@@ -5,17 +5,32 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FileText, User, Settings, LogOut } from "lucide-react";
 import { ProfileDialog } from "@/components/profile/ProfileDialog";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useToast } from "@/hooks/use-toast";
 
 export function Navbar() {
   const [showProfile, setShowProfile] = useState(false);
-  const userEmail = localStorage.getItem('userEmail') || 'user@example.com';
-  const userName = userEmail.split('@')[0];
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+  
+  const userEmail = user?.email || 'user@example.com';
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('authMethod');
-    window.location.href = '/login';
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Logout failed",
+        description: "There was an error logging out. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleSettings = () => {
