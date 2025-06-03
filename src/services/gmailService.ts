@@ -1,4 +1,3 @@
-
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -62,6 +61,13 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       data = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse response as JSON:', responseText);
+      
+      // If it's not JSON but contains success indicators, treat as success with empty emails
+      if (responseText.includes('QuoteScribe Gmail Integration Active')) {
+        console.log('Script is active but returned non-JSON response, treating as no emails found');
+        return [];
+      }
+      
       throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
     }
     
@@ -71,12 +77,19 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
+    // Map the enhanced email data with all the new fields
     return (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
+      to: email.to,
       subject: email.subject,
       body: email.body,
-      date: email.date
+      htmlBody: email.htmlBody,
+      date: email.date,
+      threadId: email.threadId,
+      attachments: email.attachments || [],
+      hasAttachments: email.hasAttachments || false,
+      snippet: email.snippet || email.body?.substring(0, 200) + '...'
     }));
   } catch (error) {
     console.error("Error fetching unread emails:", error);

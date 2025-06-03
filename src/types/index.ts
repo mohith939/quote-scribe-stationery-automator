@@ -34,9 +34,19 @@ export interface QuoteLog {
 export interface EmailMessage {
   id: string;
   from: string;
+  to?: string;
   subject: string;
   body: string;
+  htmlBody?: string;
   date: string;
+  threadId?: string;
+  attachments?: Array<{
+    name: string;
+    type: string;
+    size: number;
+  }>;
+  hasAttachments?: boolean;
+  snippet?: string;
 }
 
 export interface ImportResult {
