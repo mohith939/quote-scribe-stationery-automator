@@ -14,25 +14,62 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { 
   fetchUnreadEmails, 
   markEmailAsRead, 
-  setupAutoEmailProcessing,
-  autoProcessEmails
+  testGoogleAppsScriptConnection,
+  sendTemplateEmail
 } from "@/services/gmailService";
 import { parseEmailForMultipleProducts } from "@/services/advancedEmailParser";
-import { getCachedProducts } from "@/services/productService";
+import { supabase } from "@/integrations/supabase/client";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [processingEmailId, setProcessingEmailId] = useState<string | null>(null);
   const [processedEmails, setProcessedEmails] = useState<string[]>([]);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(false);
-  const [checkInterval, setCheckInterval] = useState<string>("5"); // minutes
+  const [checkInterval, setCheckInterval] = useState<string>("5");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [showReclassifyDialog, setShowReclassifyDialog] = useState(false);
   const [selectedEmailForReclassify, setSelectedEmailForReclassify] = useState<EmailMessage | null>(null);
+  const [userProducts, setUserProducts] = useState<any[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
   
-  // Get real products data
-  const realProducts = getCachedProducts();
+  // Fetch user products from database
+  const fetchUserProducts = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('user_products')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error fetching user products:', error);
+        return;
+      }
+
+      setUserProducts(data || []);
+    } catch (error) {
+      console.error('Error fetching user products:', error);
+    }
+  };
+
+  // Check Google Apps Script connection status
+  const checkConnectionStatus = async () => {
+    try {
+      const result = await testGoogleAppsScriptConnection();
+      setIsConnected(result.success);
+    } catch (error) {
+      console.error('Connection check failed:', error);
+      setIsConnected(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProducts();
+    checkConnectionStatus();
+  }, []);
   
   // Fetch emails using React Query with real Gmail API
   const { data: emails, isLoading, isError, refetch } = useQuery({
@@ -40,13 +77,14 @@ export function EmailInbox() {
     queryFn: fetchUnreadEmails,
     staleTime: 60000,
     retry: 1,
+    enabled: isConnected,
     meta: {
       onSettled: (data, error) => {
         if (error) {
           console.error("Failed to fetch emails:", error);
           toast({
             title: "Error fetching emails",
-            description: "Failed to connect to Gmail. Please check your OAuth connection.",
+            description: "Failed to connect to Gmail. Please check your Google Apps Script connection.",
             variant: "destructive"
           });
         }
@@ -58,19 +96,20 @@ export function EmailInbox() {
   const detectEmailType = (email: EmailMessage) => {
     const multiProductInfo = parseEmailForMultipleProducts(email);
     
-    // Match detected products with real product catalog
+    // Match detected products with user's product catalog
     const matchedProducts = multiProductInfo.products.map(detectedProduct => {
-      const realProduct = realProducts.find(p => 
+      const userProduct = userProducts.find(p => 
         p.name.toLowerCase().includes(detectedProduct.product.toLowerCase()) ||
-        p.productCode.toLowerCase().includes(detectedProduct.product.toLowerCase()) ||
+        p.product_code.toLowerCase().includes(detectedProduct.product.toLowerCase()) ||
         detectedProduct.product.toLowerCase().includes(p.name.toLowerCase())
       );
       
       return {
         detected: detectedProduct.product,
-        matched: realProduct?.name || null,
+        matched: userProduct?.name || null,
         confidence: detectedProduct.confidence,
-        quantity: detectedProduct.quantity
+        quantity: detectedProduct.quantity,
+        productData: userProduct
       };
     });
     
@@ -98,40 +137,26 @@ export function EmailInbox() {
     };
   };
 
-  // Setup email auto-sync with configurable interval
-  useEffect(() => {
-    const intervalMs = parseInt(checkInterval) * 60 * 1000; // Convert minutes to milliseconds
+  const handleManualSync = async () => {
+    toast({
+      title: "Syncing Emails",
+      description: "Checking for new emails..."
+    });
     
-    const emailProcessor = setupAutoEmailProcessing(async (newEmails) => {
-      if (autoSyncEnabled && newEmails.length > 0) {
-        toast({
-          title: "Auto-Sync Active",
-          description: `Found ${newEmails.length} new emails. Processing automatically.`
-        });
-        
-        await autoProcessEmails(newEmails, (email, success, autoProcessed) => {
-          setProcessedEmails(prev => [...prev, email.id]);
-          
-          if (success) {
-            toast({
-              title: "Quote Auto-Generated",
-              description: `Automatically processed email from ${email.from}`
-            });
-          }
-        });
-        
-        refetch();
-      }
-    }, intervalMs);
-    
-    if (autoSyncEnabled) {
-      emailProcessor.start();
+    try {
+      await refetch();
+      toast({
+        title: "Sync Complete",
+        description: "Email inbox has been updated"
+      });
+    } catch (error) {
+      toast({
+        title: "Sync Failed",
+        description: "Failed to sync emails. Please check your connection.",
+        variant: "destructive"
+      });
     }
-    
-    return () => {
-      emailProcessor.stop();
-    };
-  }, [autoSyncEnabled, checkInterval, refetch, toast]);
+  };
 
   const handleProcessManually = async (email: EmailMessage) => {
     setProcessingEmailId(email.id);
@@ -163,14 +188,36 @@ export function EmailInbox() {
     setProcessingEmailId(email.id);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const emailType = detectEmailType(email);
       
-      toast({
-        title: "Quote Sent Successfully",
-        description: `PDF quotation sent to ${email.from}`,
-      });
+      // Use template-based email sending
+      const templateData = {
+        customerName: email.from.split('@')[0],
+        products: emailType.products.map(p => ({
+          name: p.matched || p.detected,
+          quantity: p.quantity || 1,
+          price: p.productData?.unit_price || 0
+        }))
+      };
       
-      setProcessedEmails(prev => [...prev, email.id]);
+      const success = await sendTemplateEmail(
+        email.from,
+        'quote-template',
+        templateData,
+        email.id
+      );
+      
+      if (success) {
+        toast({
+          title: "Quote Sent Successfully",
+          description: `Template-based quotation sent to ${email.from}`,
+        });
+        
+        setProcessedEmails(prev => [...prev, email.id]);
+      } else {
+        throw new Error('Failed to send template email');
+      }
+      
       setProcessingEmailId(null);
     } catch (error) {
       console.error("Error sending quote:", error);
@@ -251,6 +298,30 @@ export function EmailInbox() {
     return emailType.type === 'quote' && emailType.confidence !== 'low';
   }).length;
 
+  if (!isConnected) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Inbox</CardTitle>
+          <CardDescription>Connect Google Apps Script to access Gmail</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Google Apps Script Not Connected</h3>
+            <p className="text-muted-foreground mb-4">
+              Please connect your Google Apps Script in the Settings to access Gmail functionality.
+            </p>
+            <Button onClick={checkConnectionStatus}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Check Connection
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <>
       <Card>
@@ -259,46 +330,19 @@ export function EmailInbox() {
             <div>
               <CardTitle>Email Inbox</CardTitle>
               <CardDescription>
-                All received emails requiring response - Real-time Gmail integration with product matching!
+                Gmail integration with product detection from your catalog ({userProducts.length} products loaded)
               </CardDescription>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="auto-sync"
-                  checked={autoSyncEnabled}
-                  onCheckedChange={setAutoSyncEnabled}
-                />
-                <Label htmlFor="auto-sync" className="text-sm">
-                  {autoSyncEnabled ? (
-                    <span className="flex items-center text-green-600">
-                      <ToggleRight className="h-4 w-4 mr-1" />
-                      Auto-sync ON
-                    </span>
-                  ) : (
-                    <span className="flex items-center text-muted-foreground">
-                      <ToggleLeft className="h-4 w-4 mr-1" />
-                      Auto-sync OFF
-                    </span>
-                  )}
-                </Label>
-              </div>
-              
-              {/* Check Interval Selector */}
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <Select value={checkInterval} onValueChange={setCheckInterval}>
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1min</SelectItem>
-                    <SelectItem value="5">5min</SelectItem>
-                    <SelectItem value="15">15min</SelectItem>
-                    <SelectItem value="30">30min</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleManualSync}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Sync Now
+              </Button>
               
               {quoteRequestsCount > 0 && (
                 <Button 
@@ -309,14 +353,6 @@ export function EmailInbox() {
                   Auto Send All ({quoteRequestsCount})
                 </Button>
               )}
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={() => refetch()} 
-                disabled={isLoading}
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
             </div>
           </div>
           
@@ -350,14 +386,14 @@ export function EmailInbox() {
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-pulse flex flex-col items-center">
-                  <RefreshCw className="h-8 w-8 mb-2" />
+                  <RefreshCw className="h-8 w-8 mb-2 animate-spin" />
                   <p className="text-sm text-muted-foreground">Loading emails from Gmail...</p>
                 </div>
               </div>
             ) : isError ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p>Failed to load emails from Gmail</p>
-                <p className="text-sm mt-1">Please check your Gmail OAuth connection</p>
+                <p className="text-sm mt-1">Please check your Google Apps Script connection</p>
                 <Button 
                   variant="outline" 
                   onClick={() => refetch()} 
@@ -408,30 +444,28 @@ export function EmailInbox() {
                           {email.body}
                         </div>
                         
-                        {/* Show detected and matched products */}
+                        {/* Show detected and matched products from user's catalog */}
                         {emailType.type === 'quote' && emailType.products && emailType.products.length > 0 && (
                           <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                            <div className="text-sm font-medium text-blue-800 mb-2">Detected Products:</div>
+                            <div className="text-sm font-medium text-blue-800 mb-2">
+                              Detected Products from Your Catalog:
+                            </div>
                             <div className="space-y-1">
                               {emailType.products.map((product, index) => (
                                 <div key={index} className="text-sm">
                                   <span className="text-blue-700">
                                     {product.matched ? (
-                                      <span className="font-medium">{product.matched}</span>
+                                      <span className="font-medium">✓ {product.matched}</span>
                                     ) : (
-                                      <span className="text-red-600">"{product.detected}" (not found in catalog)</span>
+                                      <span className="text-red-600">✗ "{product.detected}" (not in your catalog)</span>
                                     )}
                                   </span>
                                   {product.quantity && (
                                     <span className="text-blue-600 ml-2">• Qty: {product.quantity}</span>
                                   )}
-                                  <span className={`ml-2 text-xs px-2 py-1 rounded ${
-                                    product.confidence === 'high' ? 'bg-green-100 text-green-700' :
-                                    product.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                    'bg-gray-100 text-gray-700'
-                                  }`}>
-                                    {product.confidence}
-                                  </span>
+                                  {product.productData && (
+                                    <span className="text-green-600 ml-2">• ₹{product.productData.unit_price}</span>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -441,18 +475,6 @@ export function EmailInbox() {
                     </div>
                     
                     <div className="flex justify-end space-x-2 pt-2 border-t">
-                      {emailType.type === 'non-quote' && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleReclassifyEmail(email)}
-                          disabled={isProcessing}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Mark as Quote
-                        </Button>
-                      )}
-                      
                       {emailType.type === 'quote' && (
                         <Button 
                           variant="default"
@@ -469,7 +491,7 @@ export function EmailInbox() {
                           ) : (
                             <span className="flex items-center">
                               <Send className="mr-2 h-4 w-4" />
-                              Send Quote
+                              Send Template Quote
                             </span>
                           )}
                         </Button>
@@ -481,35 +503,10 @@ export function EmailInbox() {
                         onClick={() => handleProcessManually(email)}
                         disabled={isProcessing}
                       >
-                        {isProcessing && emailType.type !== 'quote' ? (
-                          <span className="flex items-center">
-                            <FileText className="mr-2 h-4 w-4 animate-pulse" />
-                            Processing...
-                          </span>
-                        ) : (
-                          <span className="flex items-center">
-                            <ArrowRight className="mr-2 h-4 w-4" />
-                            Process Manually
-                          </span>
-                        )}
+                        <ArrowRight className="mr-2 h-4 w-4" />
+                        Process Manually
                       </Button>
                     </div>
-                    
-                    {!isProcessing && emailType.type === 'quote' && (
-                      <div className="pt-2 text-xs">
-                        <div className="flex items-center">
-                          <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
-                          <span className="text-muted-foreground">
-                            AI detected this as a quote request with {emailType.confidence} confidence
-                            {emailType.productCount > 1 && (
-                              <span className="ml-1 font-medium text-blue-600">
-                                • Multiple products detected ({emailType.productCount})
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -527,44 +524,13 @@ export function EmailInbox() {
               Showing {filteredEmails.length} of {(emails || []).length - processedEmails.length} unprocessed emails
               {quoteRequestsCount > 0 && (
                 <span className="ml-4 text-blue-600 font-medium">
-                  • {quoteRequestsCount} ready for auto-quote
+                  • {quoteRequestsCount} ready for template quotes
                 </span>
               )}
-              <span className="ml-4 text-green-600 font-medium">
-                • Checking every {checkInterval} minutes
-              </span>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Reclassify Email Dialog */}
-      <Dialog open={showReclassifyDialog} onOpenChange={setShowReclassifyDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reclassify Email as Quote Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to mark this email as a quote request?
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedEmailForReclassify && (
-            <div className="bg-gray-50 p-3 rounded">
-              <div className="text-sm font-medium">Email from: {selectedEmailForReclassify.from}</div>
-              <div className="text-sm text-gray-600 mt-1">{selectedEmailForReclassify.subject}</div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReclassifyDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmReclassify}>
-              Yes, Mark as Quote Request
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
