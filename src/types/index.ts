@@ -55,3 +55,39 @@ export interface QuoteTemplate {
   body: string;
   isDefault: boolean;
 }
+
+export interface GoogleSheetsConfig {
+  isConnected: boolean;
+  spreadsheetId: string | null;
+  quotesSheetName: string;
+  productsSheetName: string;
+}
+
+export interface QuoteLog {
+  timestamp: string;
+  customerName: string;
+  emailAddress: string;
+  product: string;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  status: 'Sent' | 'Failed';
+}
+
+export interface ProcessingQueueItem {
+  id: string;
+  email: EmailMessage;
+  detectedProducts: Array<{
+    product: string;
+    quantity: number;
+    confidence: 'high' | 'medium' | 'low';
+    productCode?: string;
+    brand?: string;
+  }>;
+  customerInfo: {
+    name: string;
+    email: string;
+  };
+  dateAdded: string;
+  status: 'pending' | 'processing' | 'completed';
+}

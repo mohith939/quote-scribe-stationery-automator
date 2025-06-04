@@ -45,7 +45,7 @@ const Index = () => {
         <ProcessingQueue onSwitchToTemplates={handleSwitchToTemplates} />
       </TabsContent>
       <TabsContent value="quote-templates" className="mt-0">
-        <QuoteTemplates prefilledData={prefilledQuoteData} />
+        <QuoteTemplates />
       </TabsContent>
       <TabsContent value="quote-history" className="mt-0">
         <QuoteHistory />

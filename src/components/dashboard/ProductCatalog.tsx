@@ -72,13 +72,14 @@ export function ProductCatalog() {
 
       const userProducts: Product[] = (data || []).map(item => ({
         id: item.id,
+        user_id: item.user_id,
         brand: item.brand || '',
         name: item.name,
-        productCode: item.product_code,
-        unitPrice: Number(item.unit_price),
-        gstRate: Number(item.gst_rate),
-        minQuantity: item.min_quantity || 1,
-        maxQuantity: item.max_quantity || 999,
+        product_code: item.product_code,
+        unit_price: Number(item.unit_price),
+        gst_rate: Number(item.gst_rate),
+        min_quantity: item.min_quantity || 1,
+        max_quantity: item.max_quantity || 999,
         category: item.category || 'General'
       }));
 
@@ -112,7 +113,7 @@ export function ProductCatalog() {
     let filtered = products.filter(product => {
       const matchesSearch = 
         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.productCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.product_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesBrand = brandFilter === "all" || product.brand === brandFilter;
@@ -171,11 +172,12 @@ export function ProductCatalog() {
   const handleAddProduct = () => {
     const newProduct: Product = {
       id: `new-${Date.now()}`,
+      user_id: user?.id || '',
       brand: "",
       name: "New Product",
-      productCode: "NEW-001",
-      unitPrice: 0,
-      gstRate: 18,
+      product_code: "NEW-001",
+      unit_price: 0,
+      gst_rate: 18,
       category: "General"
     };
     setProducts([newProduct, ...products]);
@@ -189,7 +191,7 @@ export function ProductCatalog() {
   };
 
   const handleSave = async () => {
-    if (!editingId || !editForm.name || !editForm.productCode || !user) {
+    if (!editingId || !editForm.name || !editForm.product_code || !user) {
       toast({
         title: "Validation Error",
         description: "Product name and code are required.",
@@ -207,11 +209,11 @@ export function ProductCatalog() {
             user_id: user.id,
             brand: editForm.brand || '',
             name: editForm.name,
-            product_code: editForm.productCode,
-            unit_price: editForm.unitPrice || 0,
-            gst_rate: editForm.gstRate || 18,
-            min_quantity: editForm.minQuantity || 1,
-            max_quantity: editForm.maxQuantity || 999,
+            product_code: editForm.product_code,
+            unit_price: editForm.unit_price || 0,
+            gst_rate: editForm.gst_rate || 18,
+            min_quantity: editForm.min_quantity || 1,
+            max_quantity: editForm.max_quantity || 999,
             category: editForm.category || 'General'
           })
           .select()
@@ -224,13 +226,14 @@ export function ProductCatalog() {
         // Update local state with the new product
         const newProduct: Product = {
           id: data.id,
+          user_id: data.user_id,
           brand: data.brand || '',
           name: data.name,
-          productCode: data.product_code,
-          unitPrice: Number(data.unit_price),
-          gstRate: Number(data.gst_rate),
-          minQuantity: data.min_quantity || 1,
-          maxQuantity: data.max_quantity || 999,
+          product_code: data.product_code,
+          unit_price: Number(data.unit_price),
+          gst_rate: Number(data.gst_rate),
+          min_quantity: data.min_quantity || 1,
+          max_quantity: data.max_quantity || 999,
           category: data.category || 'General'
         };
 
@@ -242,11 +245,11 @@ export function ProductCatalog() {
           .update({
             brand: editForm.brand || '',
             name: editForm.name,
-            product_code: editForm.productCode,
-            unit_price: editForm.unitPrice || 0,
-            gst_rate: editForm.gstRate || 18,
-            min_quantity: editForm.minQuantity || 1,
-            max_quantity: editForm.maxQuantity || 999,
+            product_code: editForm.product_code,
+            unit_price: editForm.unit_price || 0,
+            gst_rate: editForm.gst_rate || 18,
+            min_quantity: editForm.min_quantity || 1,
+            max_quantity: editForm.max_quantity || 999,
             category: editForm.category || 'General',
             updated_at: new Date().toISOString()
           })
@@ -513,27 +516,27 @@ export function ProductCatalog() {
                     <TableCell className="font-mono text-sm">
                       {editingId === product.id ? (
                         <Input
-                          value={editForm.productCode || ""}
-                          onChange={(e) => setEditForm({ ...editForm, productCode: e.target.value })}
+                          value={editForm.product_code || ""}
+                          onChange={(e) => setEditForm({ ...editForm, product_code: e.target.value })}
                           className="h-8 text-xs bg-white border-slate-200"
                           placeholder="Product Code"
                         />
                       ) : (
-                        <span className="text-slate-600">{product.productCode}</span>
+                        <span className="text-slate-600">{product.product_code}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
                       {editingId === product.id ? (
                         <Input
                           type="number"
-                          value={editForm.unitPrice || 0}
-                          onChange={(e) => setEditForm({ ...editForm, unitPrice: parseFloat(e.target.value) })}
+                          value={editForm.unit_price || 0}
+                          onChange={(e) => setEditForm({ ...editForm, unit_price: parseFloat(e.target.value) })}
                           step="0.01"
                           className="w-32 h-8 text-right text-xs bg-white border-slate-200"
                         />
                       ) : (
                         <span className="font-semibold">
-                          {product.unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          {product.unit_price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </span>
                       )}
                     </TableCell>
@@ -541,14 +544,14 @@ export function ProductCatalog() {
                       {editingId === product.id ? (
                         <Input
                           type="number"
-                          value={editForm.gstRate || 18}
-                          onChange={(e) => setEditForm({ ...editForm, gstRate: parseFloat(e.target.value) })}
+                          value={editForm.gst_rate || 18}
+                          onChange={(e) => setEditForm({ ...editForm, gst_rate: parseFloat(e.target.value) })}
                           step="0.01"
                           className="w-20 h-8 text-center text-xs bg-white border-slate-200"
                         />
                       ) : (
                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                          {product.gstRate}%
+                          {product.gst_rate}%
                         </Badge>
                       )}
                     </TableCell>

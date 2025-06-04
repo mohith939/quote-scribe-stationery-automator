@@ -24,8 +24,8 @@ export const parseEmailForMultipleProducts = (
   email: EmailMessage, 
   productCatalog: Product[] = []
 ): MultiProductParsedInfo => {
-  const emailBody = email.body.toLowerCase();
-  const emailSubject = email.subject.toLowerCase();
+  const emailBody = (email.body || '').toLowerCase();
+  const emailSubject = (email.subject || '').toLowerCase();
   const fullText = `${emailSubject} ${emailBody}`;
   
   // Extract customer info
@@ -47,11 +47,11 @@ export const parseEmailForMultipleProducts = (
     // Create search terms from product data
     const searchTerms = [
       product.name.toLowerCase(),
-      product.productCode.toLowerCase(),
+      product.product_code.toLowerCase(),
       ...(product.brand ? [product.brand.toLowerCase()] : []),
       // Break down product name into meaningful parts
       ...product.name.toLowerCase().split(/[-\s,]/),
-      ...product.productCode.toLowerCase().split(/[-\s,]/)
+      ...product.product_code.toLowerCase().split(/[-\s,]/)
     ].filter(term => term.length > 2); // Filter out very short terms
 
     // Check for product mentions
@@ -68,7 +68,7 @@ export const parseEmailForMultipleProducts = (
 
     if (productFound) {
       // Determine confidence based on match quality
-      if (fullText.includes(product.productCode.toLowerCase())) {
+      if (fullText.includes(product.product_code.toLowerCase())) {
         confidence = 'high'; // Product code is most reliable
       } else if (matchScore >= 3 || fullText.includes(product.name.toLowerCase())) {
         confidence = 'high';
@@ -85,8 +85,8 @@ export const parseEmailForMultipleProducts = (
         new RegExp(`(?:${foundTerms.join('|')})\\s*[^\\d]*?(\\d+)\\s*(?:units?|pieces?|pcs?\\.?|nos?\\.?)`, 'i'),
         
         // Quantity with product code
-        new RegExp(`${product.productCode.toLowerCase()}\\s*[^\\d]*?(\\d+)`, 'i'),
-        new RegExp(`(\\d+)\\s*[^a-z]*?${product.productCode.toLowerCase()}`, 'i'),
+        new RegExp(`${product.product_code.toLowerCase()}\\s*[^\\d]*?(\\d+)`, 'i'),
+        new RegExp(`(\\d+)\\s*[^a-z]*?${product.product_code.toLowerCase()}`, 'i'),
         
         // General quantity patterns
         /quantity[^\d]*?(\d+)/i,
@@ -114,7 +114,7 @@ export const parseEmailForMultipleProducts = (
       if (confidence !== 'low' || matchScore >= 2) {
         detectedProducts.push({
           product: product.name,
-          productCode: product.productCode,
+          productCode: product.product_code,
           brand: product.brand,
           quantity,
           confidence
@@ -210,7 +210,7 @@ export const parseEmailForMultipleProducts = (
     customerName,
     emailAddress,
     products: uniqueProducts,
-    originalText: email.body,
+    originalText: email.body || '',
     overallConfidence
   };
 };
@@ -236,11 +236,11 @@ export const calculateMultiProductPrice = (
   const itemBreakdown = products.map(parsedProduct => {
     const catalogProduct = productCatalog.find(p => 
       p.name === parsedProduct.product || 
-      p.productCode === parsedProduct.productCode
+      p.product_code === parsedProduct.productCode
     );
     
-    const unitPrice = catalogProduct ? catalogProduct.unitPrice : 0;
-    const gstRate = catalogProduct ? catalogProduct.gstRate : 18; // Default GST rate
+    const unitPrice = catalogProduct ? catalogProduct.unit_price : 0;
+    const gstRate = catalogProduct ? catalogProduct.gst_rate : 18; // Default GST rate
     const basePrice = unitPrice * parsedProduct.quantity;
     const gstAmount = (basePrice * gstRate) / 100;
     const totalPrice = basePrice + gstAmount;
