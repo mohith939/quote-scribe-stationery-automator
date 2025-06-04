@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, AlertCircle, Settings, ExternalLink } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock } from "lucide-react";
 import { EmailMessage } from "@/types";
 
 export function EmailInbox() {
@@ -84,37 +84,11 @@ export function EmailInbox() {
       </CardHeader>
       
       <CardContent>
-        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <span className="text-sm font-medium text-blue-800">Email Integration Options</span>
-          </div>
-          <div className="text-sm text-blue-700 space-y-2">
-            <p><strong>Better alternatives to Google Apps Script:</strong></p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Gmail API with OAuth:</strong> Direct integration with proper authentication</li>
-              <li><strong>IMAP/POP3:</strong> Universal email protocol support for any email provider</li>
-              <li><strong>Email webhooks:</strong> Real-time email notifications via services like SendGrid</li>
-              <li><strong>Zapier/Make.com:</strong> No-code automation to forward emails to your app</li>
-            </ul>
-            <div className="mt-3 flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => window.open('https://developers.google.com/gmail/api', '_blank')}>
-                <ExternalLink className="h-3 w-3 mr-1" />
-                Gmail API Docs
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.open('https://zapier.com', '_blank')}>
-                <ExternalLink className="h-3 w-3 mr-1" />
-                Zapier
-              </Button>
-            </div>
-          </div>
-        </div>
-
         {emails.length === 0 && !isLoading ? (
           <div className="text-center py-12 text-slate-500">
             <Inbox className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium mb-2">No emails loaded</h3>
-            <p className="text-sm mb-4">Choose an integration method above to start fetching emails</p>
+            <p className="text-sm mb-4">Click the button above to load sample emails</p>
           </div>
         ) : isLoading ? (
           <div className="text-center py-12 text-slate-500">

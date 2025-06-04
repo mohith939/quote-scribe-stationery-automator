@@ -1,9 +1,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mail, Clock, FileText, History, Package, Settings as SettingsIcon } from "lucide-react";
+import { Mail, Clock, FileText, History, Package } from "lucide-react";
 import { Navbar } from "./Navbar";
-import { useEffect } from "react";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -12,16 +11,6 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, activeTab, onTabChange }: MainLayoutProps) {
-  useEffect(() => {
-    // Listen for settings navigation from navbar
-    const handleSwitchToSettings = () => {
-      onTabChange('settings');
-    };
-
-    window.addEventListener('switchToSettings', handleSwitchToSettings);
-    return () => window.removeEventListener('switchToSettings', handleSwitchToSettings);
-  }, [onTabChange]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <Navbar />
