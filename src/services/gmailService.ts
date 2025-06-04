@@ -1,4 +1,3 @@
-
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -35,8 +34,7 @@ export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMe
     
     // Add maxEmails parameter to limit the fetch
     const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxEmails=${maxEmails}&_=${Date.now()}`, {
-      method: 'GET',
-      timeout: 30000 // 30 second timeout
+      method: 'GET'
     });
     
     if (!response.ok) {
