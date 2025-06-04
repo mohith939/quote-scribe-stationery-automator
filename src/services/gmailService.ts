@@ -1,4 +1,3 @@
-
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -323,4 +322,4 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
 
 // Legacy functions for backward compatibility
 export const sendTemplateEmail = sendQuoteEmail;
-export const fetchUnreadEmails as fetchAllUnreadEmails = fetchUnreadEmails;
+export const fetchAllUnreadEmails = fetchUnreadEmails;
