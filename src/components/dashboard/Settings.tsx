@@ -1,8 +1,9 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { GoogleAppsScriptIntegration } from "./GoogleAppsScriptIntegration";
 import { UserProfileManager } from "../auth/UserProfileManager";
-import { Settings as SettingsIcon, User, Code } from "lucide-react";
+import { GmailSettings } from "./GmailSettings";
+import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
+import { Settings as SettingsIcon, User, Mail, Database } from "lucide-react";
 
 export function Settings() {
   return (
@@ -28,13 +29,22 @@ export function Settings() {
         <UserProfileManager />
       </div>
 
-      {/* Google Apps Script Integration Section */}
+      {/* Email Integration Section */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium flex items-center gap-2">
-          <Code className="h-5 w-5" />
-          Google Apps Script Integration
+          <Mail className="h-5 w-5" />
+          Email Integration
         </h3>
-        <GoogleAppsScriptIntegration />
+        <GmailSettings />
+      </div>
+
+      {/* Google Sheets Integration Section */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium flex items-center gap-2">
+          <Database className="h-5 w-5" />
+          Google Sheets Integration
+        </h3>
+        <GoogleSheetsSettings />
       </div>
     </div>
   );
