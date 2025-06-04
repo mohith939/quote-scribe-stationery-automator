@@ -22,8 +22,8 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
-// Simple and fast email fetching
-export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
+// Enhanced email fetching with quota handling
+export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMessage[]> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
     if (!scriptUrl) {
@@ -31,10 +31,12 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       return [];
     }
 
-    console.log('Fetching emails from:', scriptUrl);
+    console.log(`Fetching up to ${maxEmails} emails from:`, scriptUrl);
     
-    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&_=${Date.now()}`, {
-      method: 'GET'
+    // Add maxEmails parameter to limit the fetch
+    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxEmails=${maxEmails}&_=${Date.now()}`, {
+      method: 'GET',
+      timeout: 30000 // 30 second timeout
     });
     
     if (!response.ok) {
@@ -53,6 +55,10 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
     console.log('Parsed response:', data);
     
     if (!data.success) {
+      // Handle quota exceeded error specifically
+      if (data.error && data.error.includes('Service invoked too many times')) {
+        throw new Error('Gmail quota exceeded for today. Try again tomorrow or reduce email fetch limit.');
+      }
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
@@ -88,11 +94,12 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   }
 };
 
-// Test connection - simple version
+// Test connection with better error handling
 export const testGoogleAppsScriptConnection = async (): Promise<{
   success: boolean;
   message: string;
   emailCount?: number;
+  quotaExceeded?: boolean;
 }> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -119,10 +126,19 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     }
     
     const data = JSON.parse(text);
+    
+    if (!data.success && data.error && data.error.includes('Service invoked too many times')) {
+      return {
+        success: false,
+        message: 'Gmail quota exceeded for today. Connection works but no more API calls allowed.',
+        quotaExceeded: true
+      };
+    }
+    
     return {
       success: data.success,
       message: data.message || 'Connection test completed',
-      emailCount: data.emailCount
+      emailCount: data.unread_emails || data.emailCount
     };
     
   } catch (error) {

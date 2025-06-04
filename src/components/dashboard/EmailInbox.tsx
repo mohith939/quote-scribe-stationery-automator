@@ -4,25 +4,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, AlertCircle } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock, AlertCircle, Settings } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { fetchUnreadEmails } from "@/services/gmailService";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function EmailInbox() {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [emailLimit, setEmailLimit] = useState<string>("10");
 
   const handleFetchEmails = async () => {
     if (isLoading) return;
     
     setIsLoading(true);
     try {
-      console.log('Starting email fetch...');
+      console.log(`Starting email fetch with limit: ${emailLimit}...`);
       const startTime = Date.now();
       
-      const unreadEmails = await fetchUnreadEmails();
+      const unreadEmails = await fetchUnreadEmails(parseInt(emailLimit));
       const endTime = Date.now();
       const fetchTime = (endTime - startTime) / 1000;
       
@@ -37,9 +39,20 @@ export function EmailInbox() {
       });
     } catch (error) {
       console.error('Email fetch failed:', error);
+      
+      let errorMessage = "Unable to fetch emails. Check your Google Apps Script connection.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('quota exceeded') || error.message.includes('Service invoked too many times')) {
+          errorMessage = "Gmail quota exceeded for today. Try again tomorrow or contact Google Apps Script support.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Fetch Failed", 
-        description: "Unable to fetch emails. Check your Google Apps Script connection.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -68,27 +81,54 @@ export function EmailInbox() {
             <Mail className="h-5 w-5 text-blue-600" />
             <div>
               <CardTitle>Email Inbox</CardTitle>
-              <CardDescription>Simple and fast email fetching</CardDescription>
+              <CardDescription>Quota-aware email fetching</CardDescription>
             </div>
           </div>
-          <Button 
-            onClick={handleFetchEmails}
-            disabled={isLoading}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Loading...' : 'Fetch Emails'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-slate-500" />
+              <Select value={emailLimit} onValueChange={setEmailLimit}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              onClick={handleFetchEmails}
+              disabled={isLoading}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Loading...' : 'Fetch Emails'}
+            </Button>
+          </div>
         </div>
         {lastSyncTime && (
           <p className="text-xs text-slate-500">
-            Last updated: {new Date(lastSyncTime).toLocaleString()}
+            Last updated: {new Date(lastSyncTime).toLocaleString()} | Limit: {emailLimit} emails
           </p>
         )}
       </CardHeader>
       
       <CardContent>
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <span className="text-sm font-medium text-amber-800">Quota Management</span>
+          </div>
+          <div className="text-xs text-amber-700 mt-1">
+            <p>With 4,780+ unread emails, fetching is limited to prevent quota exceeded errors.</p>
+            <p>• Start with 5-10 emails to test • Increase limit gradually • Reset daily at midnight GMT</p>
+          </div>
+        </div>
+
         {emails.length === 0 && !isLoading ? (
           <div className="text-center py-12 text-slate-500">
             <Inbox className="h-12 w-12 mx-auto mb-4 text-slate-300" />
@@ -99,13 +139,16 @@ export function EmailInbox() {
           <div className="text-center py-12 text-slate-500">
             <RefreshCw className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-spin" />
             <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
-            <p className="text-sm">Please wait while we load your emails</p>
+            <p className="text-sm">Please wait while we load {emailLimit} emails</p>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 {emails.length} Email{emails.length !== 1 ? 's' : ''} Found
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Limit: {emailLimit}
               </Badge>
             </div>
             
