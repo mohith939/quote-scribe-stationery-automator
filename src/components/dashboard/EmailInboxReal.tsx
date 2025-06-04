@@ -1,67 +1,19 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, Trash2 } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle, Edit } from "lucide-react";
 import { EmailMessage } from "@/types";
-
-const EMAILS_STORAGE_KEY = 'persisted_emails';
-const SCRIPT_URL_STORAGE_KEY = 'google_apps_script_url';
 
 export function EmailInboxReal() {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  // Load persisted data on component mount
-  useEffect(() => {
-    try {
-      const savedEmails = localStorage.getItem(EMAILS_STORAGE_KEY);
-      const savedScriptUrl = localStorage.getItem(SCRIPT_URL_STORAGE_KEY);
-      
-      if (savedEmails) {
-        const parsedEmails = JSON.parse(savedEmails);
-        setEmails(parsedEmails);
-        console.log(`Loaded ${parsedEmails.length} persisted emails`);
-      }
-      
-      if (savedScriptUrl) {
-        setScriptUrl(savedScriptUrl);
-        console.log('Loaded persisted script URL');
-      }
-    } catch (error) {
-      console.error('Error loading persisted data:', error);
-    }
-  }, []);
-
-  // Persist emails when they change
-  useEffect(() => {
-    try {
-      if (emails.length > 0) {
-        localStorage.setItem(EMAILS_STORAGE_KEY, JSON.stringify(emails));
-        console.log(`Persisted ${emails.length} emails`);
-      }
-    } catch (error) {
-      console.error('Error persisting emails:', error);
-    }
-  }, [emails]);
-
-  // Persist script URL when it changes
-  useEffect(() => {
-    try {
-      if (scriptUrl.trim()) {
-        localStorage.setItem(SCRIPT_URL_STORAGE_KEY, scriptUrl);
-        console.log('Persisted script URL');
-      }
-    } catch (error) {
-      console.error('Error persisting script URL:', error);
-    }
-  }, [scriptUrl]);
 
   const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
@@ -116,27 +68,6 @@ export function EmailInboxReal() {
       });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const clearData = () => {
-    try {
-      localStorage.removeItem(EMAILS_STORAGE_KEY);
-      localStorage.removeItem(SCRIPT_URL_STORAGE_KEY);
-      setEmails([]);
-      setScriptUrl('');
-      
-      toast({
-        title: "Data Cleared",
-        description: "All saved emails and script URL have been cleared",
-      });
-    } catch (error) {
-      console.error('Error clearing data:', error);
-      toast({
-        title: "Clear Failed",
-        description: "Failed to clear saved data",
-        variant: "destructive"
-      });
     }
   };
 
@@ -204,15 +135,6 @@ export function EmailInboxReal() {
               >
                 {isLoading ? 'Fetching...' : 'Fetch Emails'}
               </Button>
-              {(emails.length > 0 || scriptUrl.trim()) && (
-                <Button 
-                  variant="outline"
-                  onClick={clearData}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
             </div>
           </div>
         </div>
@@ -234,9 +156,6 @@ export function EmailInboxReal() {
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 {emails.length} Email{emails.length !== 1 ? 's' : ''} Found
-              </Badge>
-              <Badge variant="outline" className="text-xs text-green-600">
-                Data Persisted
               </Badge>
             </div>
             
