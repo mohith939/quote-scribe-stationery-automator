@@ -1,4 +1,3 @@
-
 import { QuoteTemplate } from "@/types";
 import { ParsedEmailInfo } from "./emailParserService";
 
@@ -9,7 +8,8 @@ export const defaultQuoteTemplate: QuoteTemplate = {
   subject: "Your Quotation for {product}",
   greeting: "Dear {customer},",
   body: "Thank you for your inquiry. Please find our quotation below:\n\nProduct: {product}\nQuantity: {quantity}\nPrice per Unit: ₹{price_per_unit}\nTotal Amount: ₹{total_amount}\n\nThis quotation is valid for 14 days from the date of this email.",
-  signoff: "Best regards,\nYour Stationery Shop"
+  signoff: "Best regards,\nYour Stationery Shop",
+  isDefault: true
 };
 
 /**
