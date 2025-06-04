@@ -53,6 +53,8 @@ export interface QuoteTemplate {
   name: string;
   subject: string;
   body: string;
+  greeting?: string;
+  signoff?: string;
   isDefault: boolean;
 }
 
@@ -64,6 +66,7 @@ export interface GoogleSheetsConfig {
 }
 
 export interface QuoteLog {
+  id?: string;
   timestamp: string;
   customerName: string;
   emailAddress: string;
@@ -71,7 +74,16 @@ export interface QuoteLog {
   quantity: number;
   pricePerUnit: number;
   totalAmount: number;
-  status: 'Sent' | 'Failed';
+  totalQuotedAmount?: number;
+  status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
+  extractedDetails?: {
+    product?: string;
+    quantity?: number;
+    products: Array<{
+      product: string;
+      quantity: number;
+    }>;
+  };
 }
 
 export interface ProcessingQueueItem {

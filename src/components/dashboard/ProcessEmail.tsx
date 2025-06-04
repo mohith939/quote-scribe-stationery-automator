@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -33,11 +32,11 @@ export function ProcessEmail() {
     // Find the appropriate price based on quantity
     const product = mockProducts.find(p => 
       p.name === emailData.productName && 
-      newQuantity >= p.minQuantity && 
-      newQuantity <= p.maxQuantity
+      newQuantity >= (p.min_quantity || 1) && 
+      newQuantity <= (p.max_quantity || 999999)
     );
     
-    const pricePerUnit = product ? product.pricePerUnit : 0;
+    const pricePerUnit = product ? product.unit_price : 0;
     const calculatedPrice = pricePerUnit * newQuantity;
     
     setEmailData({
@@ -51,11 +50,11 @@ export function ProcessEmail() {
     // Find the appropriate price based on selected product and current quantity
     const product = mockProducts.find(p => 
       p.name === newProduct && 
-      emailData.quantity >= p.minQuantity && 
-      emailData.quantity <= p.maxQuantity
+      emailData.quantity >= (p.min_quantity || 1) && 
+      emailData.quantity <= (p.max_quantity || 999999)
     );
     
-    const pricePerUnit = product ? product.pricePerUnit : 0;
+    const pricePerUnit = product ? product.unit_price : 0;
     const calculatedPrice = pricePerUnit * emailData.quantity;
     
     setEmailData({
@@ -88,10 +87,10 @@ export function ProcessEmail() {
       const emailSubject = generateEmailSubject(defaultQuoteTemplate, emailData.productName);
       const product = mockProducts.find(p => 
         p.name === emailData.productName && 
-        emailData.quantity >= p.minQuantity && 
-        emailData.quantity <= p.maxQuantity
+        emailData.quantity >= (p.min_quantity || 1) && 
+        emailData.quantity <= (p.max_quantity || 999999)
       );
-      const pricePerUnit = product ? product.pricePerUnit : 0;
+      const pricePerUnit = product ? product.unit_price : 0;
       
       const emailBody = generateQuoteEmailBody(
         defaultQuoteTemplate,
@@ -145,11 +144,9 @@ export function ProcessEmail() {
       title: "Printing Quote",
       description: "The quote has been sent to the printer",
     });
-    // In a real app, we would use window.print() or a library like react-to-print
   };
 
   const handleExport = () => {
-    // Create CSV content
     const csvContent = `
 Product Name,${emailData.productName}
 Quantity,${emailData.quantity}
@@ -159,7 +156,6 @@ Customer,${emailData.from}
 Date,${new Date().toLocaleDateString()}
     `.trim();
     
-    // Create a blob and download it
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -179,10 +175,8 @@ Date,${new Date().toLocaleDateString()}
   const handleAutoAnalyzeEmail = () => {
     setAutoAnalysisActive(true);
     
-    // Simulate processing delay
     setTimeout(() => {
       try {
-        // Parse the email using our NLP service
         const mockEmail = {
           id: "manual-analysis",
           from: emailData.from,
@@ -203,7 +197,6 @@ Date,${new Date().toLocaleDateString()}
           return;
         }
         
-        // Calculate price
         const pricing = calculatePrice(parsedInfo.product, parsedInfo.quantity, mockProducts);
         
         if (!pricing) {
@@ -216,7 +209,6 @@ Date,${new Date().toLocaleDateString()}
           return;
         }
         
-        // Update form with detected values
         setEmailData({
           ...emailData,
           productName: parsedInfo.product,
@@ -229,7 +221,6 @@ Date,${new Date().toLocaleDateString()}
           description: `Detected ${parsedInfo.product} × ${parsedInfo.quantity} with ${parsedInfo.confidence} confidence.`,
         });
         
-        // Generate the quote
         setQuoteGenerated(true);
       } catch (error) {
         console.error("Error in auto analysis:", error);

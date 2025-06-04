@@ -41,7 +41,7 @@ export const extractEmailAddress = (emailFrom: string): string => {
  * Advanced NLP to parse email body with better accuracy
  */
 export const parseEmailForQuotation = (email: EmailMessage): ParsedEmailInfo => {
-  const emailBody = email.body.toLowerCase();
+  const emailBody = (email.body || '').toLowerCase();
   const customerName = extractCustomerName(email.from);
   const emailAddress = extractEmailAddress(email.from);
   
@@ -49,7 +49,7 @@ export const parseEmailForQuotation = (email: EmailMessage): ParsedEmailInfo => 
   const parsedInfo: ParsedEmailInfo = {
     customerName,
     emailAddress,
-    originalText: email.body,
+    originalText: email.body || '',
     confidence: 'none'
   };
   
@@ -232,8 +232,8 @@ export const validateParsedInfo = (parsedInfo: ParsedEmailInfo, products: Produc
   
   const matchingProduct = products.find(p => 
     p.name === parsedInfo.product && 
-    parsedInfo.quantity! >= p.minQuantity && 
-    parsedInfo.quantity! <= p.maxQuantity
+    parsedInfo.quantity! >= (p.min_quantity || 1) && 
+    parsedInfo.quantity! <= (p.max_quantity || 999999)
   );
   
   return !!matchingProduct;

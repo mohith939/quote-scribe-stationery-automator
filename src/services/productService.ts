@@ -1,4 +1,3 @@
-
 import { Product } from "@/types";
 import * as XLSX from 'xlsx';
 
@@ -31,13 +30,14 @@ export const fetchProductsFromSheets = async (sheetId?: string): Promise<Product
     // Skip header row and convert to products
     const products: Product[] = rows.slice(1).map((row: string[], index: number) => ({
       id: (index + 1).toString(),
+      user_id: 'system',
       brand: row[0] || '',
       name: row[1] || '',
-      productCode: row[2] || '',
-      unitPrice: parseFloat(row[3]) || 0,
-      gstRate: parseFloat(row[4]) || 18,
-      minQuantity: 1,
-      maxQuantity: 999,
+      product_code: row[2] || '',
+      unit_price: parseFloat(row[3]) || 0,
+      gst_rate: parseFloat(row[4]) || 18,
+      min_quantity: 1,
+      max_quantity: 999,
       category: row[0] || 'General'
     }));
     
@@ -65,8 +65,8 @@ export const searchProducts = (
   // Exact matches first
   const exactMatches = products.filter(p => 
     p.name.toLowerCase().includes(term) ||
-    p.productCode.toLowerCase().includes(term) ||
-    p.brand.toLowerCase().includes(term)
+    p.product_code.toLowerCase().includes(term) ||
+    (p.brand && p.brand.toLowerCase().includes(term))
   );
   
   // Fuzzy matches for partial words
@@ -74,8 +74,8 @@ export const searchProducts = (
     const words = term.split(' ');
     return words.some(word => 
       p.name.toLowerCase().includes(word) ||
-      p.productCode.toLowerCase().includes(word) ||
-      p.brand.toLowerCase().includes(word)
+      p.product_code.toLowerCase().includes(word) ||
+      (p.brand && p.brand.toLowerCase().includes(word))
     );
   }).filter(p => !exactMatches.includes(p));
   
@@ -141,22 +141,23 @@ export const importProductsFromFile = async (file: File): Promise<{
         
         const product: Product = {
           id: Date.now().toString() + i,
+          user_id: 'imported',
           brand: row[columnMapping['Brand']] || '',
           name: row[columnMapping['Product Description']] || '',
-          productCode: row[columnMapping['Product Code']] || '',
-          unitPrice: parseFloat(row[columnMapping['Unit Price']]) || 0,
-          gstRate: parseFloat(row[columnMapping['GST Rate']]) || 18,
-          minQuantity: 1,
-          maxQuantity: 999,
+          product_code: row[columnMapping['Product Code']] || '',
+          unit_price: parseFloat(row[columnMapping['Unit Price']]) || 0,
+          gst_rate: parseFloat(row[columnMapping['GST Rate']]) || 18,
+          min_quantity: 1,
+          max_quantity: 999,
           category: row[columnMapping['Brand']] || 'General'
         };
         
-        if (!product.name || !product.productCode) {
+        if (!product.name || !product.product_code) {
           errors.push(`Row ${i + 1}: Missing product name or code`);
           continue;
         }
         
-        if (isNaN(product.unitPrice) || product.unitPrice <= 0) {
+        if (isNaN(product.unit_price) || product.unit_price <= 0) {
           errors.push(`Row ${i + 1}: Invalid unit price`);
           continue;
         }
