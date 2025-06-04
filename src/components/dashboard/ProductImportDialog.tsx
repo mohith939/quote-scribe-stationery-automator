@@ -19,6 +19,7 @@ interface ProductImportDialogProps {
 interface ImportResult {
   success: boolean;
   importedCount: number;
+  skippedCount: number;
   errors: string[];
 }
 
@@ -53,12 +54,10 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
     
     if (isNaN(parsed)) return 0;
     
-    // Ensure the value is within PostgreSQL numeric field limits
-    // Max safe value for numeric fields is typically around 1e10
-    if (parsed > 1000000000) return 1000000000; // 1 billion max
-    if (parsed < 0) return 0; // No negative values for prices
+    if (parsed > 1000000000) return 1000000000;
+    if (parsed < 0) return 0;
     
-    return Math.round(parsed * 100) / 100; // Round to 2 decimal places
+    return Math.round(parsed * 100) / 100;
   };
 
   const importProductsFromFile = async (file: File): Promise<ImportResult> => {
@@ -90,7 +89,6 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
       const products: any[] = [];
       const errors: string[] = [];
       
-      // Find column indices for our required fields
       const getColumnIndex = (possibleNames: string[]) => {
         return headers.findIndex(header => 
           possibleNames.some(name => 
@@ -104,6 +102,14 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
       const codeIndex = getColumnIndex(['code', 'product code', 'sku', 'item code']);
       const priceIndex = getColumnIndex(['price', 'unit price', 'cost']);
       const gstIndex = getColumnIndex(['gst', 'tax', 'gst rate', 'tax rate']);
+      
+      // First, get existing products to check for duplicates
+      const { data: existingProducts } = await supabase
+        .from('user_products')
+        .select('product_code')
+        .eq('user_id', user.id);
+
+      const existingCodes = new Set(existingProducts?.map(p => p.product_code) || []);
       
       for (let i = 1; i < jsonData.length; i++) {
         try {
@@ -127,12 +133,17 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
             continue;
           }
 
-          // Validate GST rate
-          const validGst = Math.min(Math.max(gst, 0), 100); // Between 0 and 100%
+          // Check for duplicates
+          if (existingCodes.has(code)) {
+            errors.push(`Row ${i + 1}: Product code '${code}' already exists, skipping`);
+            continue;
+          }
+
+          const validGst = Math.min(Math.max(gst, 0), 100);
           
           const product = {
             user_id: user.id,
-            brand: brand.substring(0, 255), // Limit string length
+            brand: brand.substring(0, 255),
             name: name.substring(0, 255),
             product_code: code.substring(0, 100),
             unit_price: price,
@@ -143,6 +154,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
           };
           
           products.push(product);
+          existingCodes.add(code); // Add to set to avoid duplicates within the same import
         } catch (error) {
           errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Invalid data format'}`);
         }
@@ -152,31 +164,47 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
         throw new Error('No valid products found in file');
       }
       
-      // Insert products into database in batches to avoid timeouts
-      const batchSize = 50;
+      // Insert products in smaller batches with better error handling
+      const batchSize = 25; // Reduced batch size
       let successfulInserts = 0;
+      let skippedCount = 0;
       
       for (let i = 0; i < products.length; i += batchSize) {
         const batch = products.slice(i, i + batchSize);
         
-        const { data, error } = await supabase
-          .from('user_products')
-          .insert(batch)
-          .select('id');
-        
-        if (error) {
-          console.error(`Batch ${i / batchSize + 1} error:`, error);
-          errors.push(`Batch ${i / batchSize + 1}: ${error.message}`);
-        } else {
-          successfulInserts += data?.length || 0;
+        try {
+          const { data, error } = await supabase
+            .from('user_products')
+            .insert(batch)
+            .select('id');
+          
+          if (error) {
+            // Handle constraint violation errors specifically
+            if (error.code === '23505') {
+              skippedCount += batch.length;
+              errors.push(`Batch ${Math.floor(i / batchSize) + 1}: Some products already exist, skipped duplicates`);
+            } else {
+              console.error(`Batch ${Math.floor(i / batchSize) + 1} error:`, error);
+              errors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${error.message}`);
+            }
+          } else {
+            successfulInserts += data?.length || 0;
+          }
+        } catch (batchError) {
+          console.error(`Batch ${Math.floor(i / batchSize) + 1} error:`, batchError);
+          errors.push(`Batch ${Math.floor(i / batchSize) + 1}: Unexpected error occurred`);
         }
+        
+        // Update progress
+        setProgress(Math.round(((i + batchSize) / products.length) * 90));
       }
       
-      console.log(`Successfully imported ${successfulInserts} products`);
+      console.log(`Successfully imported ${successfulInserts} products, skipped ${skippedCount}`);
       
       return {
         success: successfulInserts > 0,
         importedCount: successfulInserts,
+        skippedCount,
         errors
       };
     } catch (error) {
@@ -184,6 +212,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
       return {
         success: false,
         importedCount: 0,
+        skippedCount: 0,
         errors: [error instanceof Error ? error.message : 'Import failed']
       };
     }
@@ -196,27 +225,15 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
     setProgress(0);
 
     try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
       const result = await importProductsFromFile(file);
       
-      clearInterval(progressInterval);
       setProgress(100);
       setImportResult(result);
 
       if (result.success) {
         toast({
-          title: "Import Successful",
-          description: `Successfully imported ${result.importedCount} products to your catalog`,
+          title: "Import Completed",
+          description: `Successfully imported ${result.importedCount} products${result.skippedCount > 0 ? `, skipped ${result.skippedCount} duplicates` : ''}`,
         });
         onImportComplete();
       } else {
@@ -235,6 +252,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
       setImportResult({
         success: false,
         importedCount: 0,
+        skippedCount: 0,
         errors: [error instanceof Error ? error.message : 'Unknown error']
       });
     } finally {
@@ -274,12 +292,12 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
                   <ul className="list-disc pl-5 mt-1 space-y-1">
                     <li>Brand/Manufacturer</li>
                     <li>Product Name/Description</li>
-                    <li>Product Code/SKU</li>
+                    <li>Product Code/SKU (must be unique)</li>
                     <li>Unit Price/Cost (required)</li>
                     <li>GST Rate/Tax (optional, defaults to 18%)</li>
                   </ul>
                   <p className="mt-2 text-xs"><strong>Supported:</strong> .csv, .xlsx, .xls files</p>
-                  <p className="mt-1 text-xs"><strong>Note:</strong> Prices should be reasonable numbers (max 1 billion)</p>
+                  <p className="mt-1 text-xs"><strong>Note:</strong> Duplicate product codes will be skipped automatically</p>
                 </div>
               </div>
             </div>
@@ -324,10 +342,13 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: Pr
                 )}
                 <div className="ml-3">
                   <h3 className={`text-sm font-medium ${importResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                    {importResult.success ? 'Import Successful' : 'Import Failed'}
+                    {importResult.success ? 'Import Completed' : 'Import Failed'}
                   </h3>
                   <div className={`mt-2 text-sm ${importResult.success ? 'text-green-700' : 'text-red-700'}`}>
                     <p>Products imported: {importResult.importedCount}</p>
+                    {importResult.skippedCount > 0 && (
+                      <p>Products skipped (duplicates): {importResult.skippedCount}</p>
+                    )}
                     {importResult.errors.length > 0 && (
                       <div className="mt-2">
                         <p>Issues encountered:</p>

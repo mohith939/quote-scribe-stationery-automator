@@ -1,9 +1,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserProfileManager } from "../auth/UserProfileManager";
-import { GmailSettings } from "./GmailSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
-import { Settings as SettingsIcon, User, Mail, Database } from "lucide-react";
+import { Settings as SettingsIcon, User, Database } from "lucide-react";
 
 export function Settings() {
   return (
@@ -27,15 +26,6 @@ export function Settings() {
           User Profile
         </h3>
         <UserProfileManager />
-      </div>
-
-      {/* Email Integration Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium flex items-center gap-2">
-          <Mail className="h-5 w-5" />
-          Email Integration
-        </h3>
-        <GmailSettings />
       </div>
 
       {/* Google Sheets Integration Section */}

@@ -51,7 +51,7 @@ export function UserProfileManager() {
       if (data) {
         setProfile(data);
         setFormData({
-          full_name: data.full_name || user.user_metadata?.full_name || '',
+          full_name: data.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
           email: data.email || user.email || ''
         });
       } else {
@@ -59,7 +59,7 @@ export function UserProfileManager() {
         const newProfile = {
           id: user.id,
           user_id: user.id,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '',
           email: user.email || ''
         };
 
@@ -154,6 +154,10 @@ export function UserProfileManager() {
     );
   }
 
+  // Extract user name from email or use profile data
+  const displayName = formData.full_name || user.email?.split('@')[0] || 'User';
+  const displayEmail = formData.email || user.email || '';
+
   return (
     <Card>
       <CardHeader>
@@ -162,7 +166,7 @@ export function UserProfileManager() {
           User Profile
         </CardTitle>
         <CardDescription>
-          Manage your account information
+          Manage your account information for {displayEmail}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -187,6 +191,9 @@ export function UserProfileManager() {
             disabled={!isEditing}
             placeholder="Enter your email"
           />
+          <p className="text-xs text-slate-500">
+            Authenticated as: {user.email}
+          </p>
         </div>
 
         <div className="flex gap-2 pt-4">
