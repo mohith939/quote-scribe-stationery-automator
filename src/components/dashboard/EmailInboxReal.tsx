@@ -1,19 +1,62 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, Edit } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle } from "lucide-react";
 import { EmailMessage } from "@/types";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Create user-specific storage keys
+  const getUserStorageKey = (key: string) => {
+    return user ? `${key}_${user.id}` : key;
+  };
+
+  // Load persisted data on component mount
+  useEffect(() => {
+    if (user) {
+      // Load script URL for this user
+      const savedScriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
+      if (savedScriptUrl) {
+        setScriptUrl(savedScriptUrl);
+      }
+
+      // Load emails for this user
+      const savedEmails = localStorage.getItem(getUserStorageKey('gmail_emails'));
+      if (savedEmails) {
+        try {
+          const parsedEmails = JSON.parse(savedEmails);
+          setEmails(parsedEmails);
+        } catch (error) {
+          console.error('Error parsing saved emails:', error);
+        }
+      }
+    }
+  }, [user]);
+
+  // Save script URL whenever it changes
+  useEffect(() => {
+    if (user && scriptUrl) {
+      localStorage.setItem(getUserStorageKey('gmail_script_url'), scriptUrl);
+    }
+  }, [scriptUrl, user]);
+
+  // Save emails whenever they change
+  useEffect(() => {
+    if (user && emails.length > 0) {
+      localStorage.setItem(getUserStorageKey('gmail_emails'), JSON.stringify(emails));
+    }
+  }, [emails, user]);
 
   const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
@@ -105,6 +148,19 @@ export function EmailInboxReal() {
     setEmails(remainingEmails);
   };
 
+  const clearAllData = () => {
+    if (user) {
+      localStorage.removeItem(getUserStorageKey('gmail_script_url'));
+      localStorage.removeItem(getUserStorageKey('gmail_emails'));
+      setScriptUrl('');
+      setEmails([]);
+      toast({
+        title: "Data Cleared",
+        description: "Script URL and emails have been cleared",
+      });
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -137,6 +193,22 @@ export function EmailInboxReal() {
               </Button>
             </div>
           </div>
+          
+          {scriptUrl && (
+            <div className="flex gap-2">
+              <Badge variant="secondary" className="bg-green-50 text-green-700">
+                Apps Script URL Configured
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllData}
+                className="text-red-600 hover:text-red-700"
+              >
+                Clear Data
+              </Button>
+            </div>
+          )}
         </div>
 
         {emails.length === 0 && !isLoading ? (
