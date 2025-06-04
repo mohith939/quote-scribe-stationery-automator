@@ -27,7 +27,7 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
-// Function to fetch unread emails from Gmail via Google Apps Script
+// Function to fetch unread emails from Gmail via Google Apps Script (Enhanced version)
 export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -36,9 +36,10 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       return [];
     }
 
-    console.log('Fetching emails from:', scriptUrl);
+    console.log('Fetching emails from enhanced script:', scriptUrl);
     
-    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=500&_=${Date.now()}`, {
+    // Use the 'getEmails' action that your enhanced script expects
+    const response = await fetch(`${scriptUrl}?action=getEmails&_=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -62,43 +63,43 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       data = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse response as JSON:', responseText.substring(0, 500));
-      
-      // If it's not JSON but contains success indicators, treat as success with empty emails
-      if (responseText.includes('QuoteScribe Gmail Integration Active')) {
-        console.log('Script is active but returned non-JSON response, treating as no emails found');
-        return [];
-      }
-      
       throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
     }
     
-    console.log('Gmail API response summary:', {
+    console.log('Enhanced Gmail API response:', {
       success: data.success,
       emailCount: data.emails?.length || 0,
-      totalCount: data.totalCount,
-      hasMoreEmails: data.hasMoreEmails
+      hasError: !!data.error
     });
     
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
-    // Map the enhanced email data with all the new fields
+    // Map the enhanced email data with all the enhanced fields
     const emails = (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
-      to: email.to,
+      to: email.to || '',
       subject: email.subject,
       body: email.body,
-      htmlBody: email.htmlBody,
+      htmlBody: email.htmlBody || '',
       date: email.date,
-      threadId: email.threadId,
+      threadId: email.threadId || '',
       attachments: email.attachments || [],
       hasAttachments: email.hasAttachments || false,
-      snippet: email.snippet || email.body?.substring(0, 200) + '...'
+      snippet: email.body?.substring(0, 200) + '...' || '',
+      // Enhanced fields from your script
+      isQuoteRequest: email.isQuoteRequest || false,
+      products: email.products || [],
+      quantities: email.quantities || [],
+      confidence: email.confidence || 'none',
+      processingStatus: email.processingStatus || 'pending',
+      category: email.category || 'pending_classification',
+      processingConfidence: email.processingConfidence || 'none'
     }));
 
-    console.log(`Successfully fetched ${emails.length} unread emails`);
+    console.log(`Successfully fetched ${emails.length} unread emails with enhanced data`);
     return emails;
   } catch (error) {
     console.error("Error fetching unread emails:", error);
@@ -106,7 +107,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   }
 };
 
-// Mark an email as read in Gmail
+// Mark an email as read in Gmail (works with enhanced script)
 export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -114,15 +115,11 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
       throw new Error('Google Apps Script not configured');
     }
 
-    const response = await fetch(scriptUrl, {
-      method: 'POST',
+    const response = await fetch(`${scriptUrl}?action=markAsRead&emailId=${emailId}`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'markAsRead',
-        emailId
-      })
+        'Accept': 'application/json',
+      }
     });
     
     if (!response.ok) {
@@ -137,11 +134,11 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   }
 };
 
-// Send a quote email response using templates
-export const sendTemplateEmail = async (
-  to: string, 
-  templateId: string,
-  templateData: any,
+// Send a quote email using the enhanced script
+export const sendQuoteEmail = async (
+  to: string,
+  subject: string,
+  body: string,
   originalEmailId?: string
 ): Promise<boolean> => {
   try {
@@ -150,55 +147,23 @@ export const sendTemplateEmail = async (
       throw new Error('Google Apps Script not configured');
     }
 
-    const response = await fetch(scriptUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'sendTemplateEmail',
-        to,
-        templateId,
-        templateData,
-        originalEmailId
-      })
+    // Use URL parameters for the enhanced script
+    const params = new URLSearchParams({
+      action: 'sendEmail',
+      to: to,
+      subject: subject,
+      body: body
     });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to send email: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data.success;
-  } catch (error) {
-    console.error("Error sending template email:", error);
-    return false;
-  }
-};
 
-// Send a quote email (alias for sendTemplateEmail)
-export const sendQuoteEmail = async (
-  to: string,
-  subject: string,
-  body: string
-): Promise<boolean> => {
-  try {
-    const scriptUrl = await getGoogleAppsScriptUrl();
-    if (!scriptUrl) {
-      throw new Error('Google Apps Script not configured');
+    if (originalEmailId) {
+      params.append('emailId', originalEmailId);
     }
 
-    const response = await fetch(scriptUrl, {
-      method: 'POST',
+    const response = await fetch(`${scriptUrl}?${params.toString()}`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'sendEmail',
-        to,
-        subject,
-        body
-      })
+        'Accept': 'application/json',
+      }
     });
     
     if (!response.ok) {
@@ -213,7 +178,7 @@ export const sendQuoteEmail = async (
   }
 };
 
-// Log quote to Google Sheets
+// Log quote to Google Sheets using enhanced script
 export const logQuoteToSheet = async (quoteData: {
   timestamp: string;
   customerName: string;
@@ -230,15 +195,16 @@ export const logQuoteToSheet = async (quoteData: {
       throw new Error('Google Apps Script not configured');
     }
 
-    const response = await fetch(scriptUrl, {
-      method: 'POST',
+    const params = new URLSearchParams({
+      action: 'logQuote',
+      quoteData: JSON.stringify(quoteData)
+    });
+
+    const response = await fetch(`${scriptUrl}?${params.toString()}`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'logQuote',
-        quoteData
-      })
+        'Accept': 'application/json',
+      }
     });
     
     if (!response.ok) {
@@ -253,7 +219,61 @@ export const logQuoteToSheet = async (quoteData: {
   }
 };
 
-// Test the Google Apps Script connection
+// Process email using enhanced script features
+export const processEmailById = async (emailId: string): Promise<any> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured');
+    }
+
+    const response = await fetch(`${scriptUrl}?action=processEmail&emailId=${emailId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to process email: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error processing email:", error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+};
+
+// Get dashboard stats using enhanced script
+export const getDashboardStats = async (): Promise<any> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      throw new Error('Google Apps Script not configured');
+    }
+
+    const response = await fetch(`${scriptUrl}?action=getDashboardStats&_=${Date.now()}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get dashboard stats: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error getting dashboard stats:", error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+};
+
+// Test the enhanced Google Apps Script connection
 export const testGoogleAppsScriptConnection = async (): Promise<{
   success: boolean;
   message: string;
@@ -300,3 +320,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     };
   }
 };
+
+// Legacy functions for backward compatibility
+export const sendTemplateEmail = sendQuoteEmail;
+export const fetchUnreadEmails as fetchAllUnreadEmails = fetchUnreadEmails;
