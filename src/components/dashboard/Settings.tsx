@@ -1,7 +1,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserProfileManager } from "../auth/UserProfileManager";
-import { GmailSettings } from "./GmailSettings";
+import { IMAPSettings } from "./IMAPSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 import { Settings as SettingsIcon, User, Mail, Database } from "lucide-react";
 
@@ -35,7 +35,7 @@ export function Settings() {
           <Mail className="h-5 w-5" />
           Email Integration
         </h3>
-        <GmailSettings />
+        <IMAPSettings />
       </div>
 
       {/* Google Sheets Integration Section */}
