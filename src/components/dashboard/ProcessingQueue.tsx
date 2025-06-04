@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +19,10 @@ const mockPendingEmails: EmailMessage[] = [
     subject: "Urgent: Need Digital Force Gauge Quote",
     body: "Hi, we need a quote for the ZTA-500N Digital Force Gauge. We're looking at ordering 2 units. Can you send pricing ASAP? This is for our quality control lab. Thanks!",
     date: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    isQuoteRequest: true,
+    detectedProducts: [
+      { product: "ZTA-500N- Digital Force Gauge", quantity: 2, confidence: "high" as const }
+    ]
   },
   {
     id: "email-2", 
@@ -27,6 +30,10 @@ const mockPendingEmails: EmailMessage[] = [
     subject: "Request for Quotation - Glass Thermometers",
     body: "Dear Sir/Madam, We require quotation for Zeal England Glass Thermometer (Range: 10°C to 110°C). Quantity needed: 10 pieces. Please include your best pricing and delivery terms.",
     date: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    isQuoteRequest: true,
+    detectedProducts: [
+      { product: "Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C", quantity: 10, confidence: "high" as const }
+    ]
   },
   {
     id: "email-3",
@@ -34,6 +41,11 @@ const mockPendingEmails: EmailMessage[] = [
     subject: "Zero Plate Requirements",
     body: "Hello, we are interested in purchasing zero plates for our NDT testing. Specifically need: - Zero Plate Non-Ferrous (3 units) - Zero Plate Ferrous (2 units). Please provide detailed quotation.",
     date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+    isQuoteRequest: true,
+    detectedProducts: [
+      { product: "zero plate Non-Ferrous", quantity: 3, confidence: "medium" as const },
+      { product: "zero plate Ferrous", quantity: 2, confidence: "medium" as const }
+    ]
   },
   {
     id: "email-4",
@@ -41,10 +53,18 @@ const mockPendingEmails: EmailMessage[] = [
     subject: "Metallic Plate Inquiry",
     body: "We need pricing for Zero microns metallic plate. Quantity: 5 pieces. Also, do you have any bulk discounts available? Please send your catalog as well.",
     date: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+    isQuoteRequest: true,
+    detectedProducts: [
+      { product: "Zero microns metallic plate", quantity: 5, confidence: "medium" as const }
+    ]
   }
 ];
 
-export function ProcessingQueue() {
+interface ProcessingQueueProps {
+  onSwitchToTemplates?: (emailData: any) => void;
+}
+
+export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>(mockPendingEmails);
   const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
@@ -116,6 +136,39 @@ export function ProcessingQueue() {
     };
   };
 
+  const handleEditQuote = (email: EmailMessage) => {
+    // Prepare data for the quote template
+    const quoteTemplateData = {
+      customerName: extractSenderName(email.from),
+      customerEmail: email.from.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)?.[0] || "",
+      products: email.detectedProducts || [],
+      originalEmail: {
+        subject: email.subject,
+        body: email.body,
+        date: email.date
+      }
+    };
+
+    // Store data in localStorage for the templates page to access
+    localStorage.setItem('pendingQuoteData', JSON.stringify(quoteTemplateData));
+    
+    toast({
+      title: "Redirecting to Quote Templates",
+      description: "Pre-filling template with detected product information",
+    });
+
+    // Switch to templates tab with data
+    if (onSwitchToTemplates) {
+      onSwitchToTemplates(quoteTemplateData);
+    }
+
+    // Trigger a custom event to switch tabs
+    const event = new CustomEvent('switchToQuoteTemplates', { 
+      detail: quoteTemplateData 
+    });
+    window.dispatchEvent(event);
+  };
+
   const handleAutoGenerateAll = async () => {
     setIsAutoGenerating(true);
     let successCount = 0;
@@ -164,7 +217,7 @@ export function ProcessingQueue() {
     });
   };
 
-  const handleEditEmail = (email: EmailMessage) => {
+  const handleSendQuote = (email: EmailMessage) => {
     const detection = detectQuoteInfo(email);
     
     const productPrices: Record<string, number> = {
@@ -203,13 +256,7 @@ Your Company Name`;
     });
     
     setSelectedEmail(email);
-    setShowEditDialog(true);
-  };
-
-  const handleSendQuote = (email: EmailMessage) => {
-    handleEditEmail(email);
     setShowQuoteDialog(true);
-    setShowEditDialog(false);
   };
 
   const handleConfirmQuote = () => {
@@ -240,6 +287,11 @@ Your Company Name`;
     });
   };
 
+  const extractSenderName = (fromField: string) => {
+    const match = fromField.match(/^(.+?)\s*<.+>$/);
+    return match ? match[1].trim().replace(/['"]/g, '') : fromField;
+  };
+
   return (
     <>
       <Card>
@@ -248,7 +300,7 @@ Your Company Name`;
             <div>
               <CardTitle>Processing Queue</CardTitle>
               <CardDescription>
-                Emails requiring manual review and quote generation
+                Emails requiring manual review and quote generation with smart product detection
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -289,8 +341,8 @@ Your Company Name`;
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium">{email.from}</span>
-                          {detection.isQuoteRequest ? (
+                          <span className="font-medium">{extractSenderName(email.from)}</span>
+                          {email.isQuoteRequest ? (
                             <Badge variant="default" className="bg-blue-500">
                               Quote Request
                             </Badge>
@@ -319,9 +371,24 @@ Your Company Name`;
                         <div className="text-sm text-gray-700 line-clamp-2">
                           {email.body}
                         </div>
-                        {detection.product !== "Unknown" && (
-                          <div className="mt-2 text-sm text-blue-600">
-                            Detected Product: {detection.product}
+                        
+                        {/* Enhanced Product Detection Display */}
+                        {email.detectedProducts && email.detectedProducts.length > 0 && (
+                          <div className="mt-2">
+                            <div className="text-xs text-blue-600 mb-1">Detected Products:</div>
+                            <div className="flex flex-wrap gap-1">
+                              {email.detectedProducts.map((product, index) => (
+                                <Badge key={index} variant="outline" className="text-xs bg-blue-50 border-blue-200">
+                                  {product.product} × {product.quantity}
+                                  <span className={`ml-1 ${
+                                    product.confidence === 'high' ? 'text-green-600' :
+                                    product.confidence === 'medium' ? 'text-yellow-600' : 'text-orange-600'
+                                  }`}>
+                                    ({product.confidence})
+                                  </span>
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -339,7 +406,8 @@ Your Company Name`;
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleEditEmail(email)}
+                        onClick={() => handleEditQuote(email)}
+                        className="bg-blue-50 border-blue-200 hover:bg-blue-100"
                       >
                         <Edit className="h-4 w-4 mr-1" />
                         Edit Quote
@@ -374,111 +442,6 @@ Your Company Name`;
           </div>
         </CardContent>
       </Card>
-
-      {/* Edit Quote Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Quote Response</DialogTitle>
-            <DialogDescription>
-              Customize the quote before sending to: {selectedEmail?.from}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedEmail && (
-            <div className="space-y-4">
-              <div className="bg-gray-50 p-3 rounded">
-                <div className="text-sm font-medium">Original Email:</div>
-                <div className="text-sm text-gray-600 mt-1">{selectedEmail.subject}</div>
-                <div className="text-xs text-gray-500 mt-1 max-h-20 overflow-y-auto">
-                  {selectedEmail.body}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="product">Product</Label>
-                  <Input
-                    id="product"
-                    value={quoteData.product}
-                    onChange={(e) => setQuoteData({...quoteData, product: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="quantity">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    value={quoteData.quantity}
-                    onChange={(e) => {
-                      const qty = parseInt(e.target.value);
-                      setQuoteData({
-                        ...quoteData, 
-                        quantity: qty,
-                        totalAmount: qty * quoteData.pricePerUnit
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="pricePerUnit">Price per Unit (₹)</Label>
-                  <Input
-                    id="pricePerUnit"
-                    type="number"
-                    step="0.01"
-                    value={quoteData.pricePerUnit}
-                    onChange={(e) => {
-                      const price = parseFloat(e.target.value);
-                      setQuoteData({
-                        ...quoteData,
-                        pricePerUnit: price,
-                        totalAmount: price * quoteData.quantity
-                      });
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="totalAmount">Total Amount (₹)</Label>
-                  <Input
-                    id="totalAmount"
-                    type="number"
-                    value={quoteData.totalAmount.toFixed(2)}
-                    readOnly
-                    className="bg-gray-50"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <Label htmlFor="emailBody">Email Response</Label>
-                <Textarea
-                  id="emailBody"
-                  rows={8}
-                  value={quoteData.emailBody}
-                  onChange={(e) => setQuoteData({...quoteData, emailBody: e.target.value})}
-                  className="font-mono text-sm"
-                />
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => {
-              setShowEditDialog(false);
-              setShowQuoteDialog(true);
-            }}>
-              <Check className="h-4 w-4 mr-2" />
-              Preview & Send
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Send Quote Confirmation Dialog */}
       <Dialog open={showQuoteDialog} onOpenChange={setShowQuoteDialog}>

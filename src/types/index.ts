@@ -1,98 +1,57 @@
 
-export interface Product {
-  id: string;
-  name: string;
-  productCode: string;
-  brand: string;
-  unitPrice: number;
-  pricePerUnit?: number; // Add this for backward compatibility
-  gstRate: number;
-  minQuantity?: number;
-  maxQuantity?: number;
-  category?: string;
-}
-
-export interface QuoteLog {
-  id: string;
-  timestamp: string;
-  customerName: string;
-  emailAddress: string;
-  originalMessage: string;
-  extractedDetails: {
-    products: Array<{
-      product: string;
-      quantity: number;
-    }>;
-    // Keep these for backward compatibility
-    product?: string;
-    quantity?: number;
-  };
-  totalQuotedAmount: number;
-  status: 'Sent' | 'Failed' | 'Pending' | 'Manual';
-}
-
 export interface EmailMessage {
   id: string;
   from: string;
-  to?: string;
   subject: string;
   body: string;
-  htmlBody?: string;
   date: string;
-  threadId?: string;
-  attachments?: Array<{
-    name: string;
-    type: string;
-    size: number;
-  }>;
-  hasAttachments?: boolean;
   snippet?: string;
-  // Enhanced properties from Google Apps Script
+  hasAttachments?: boolean;
   isQuoteRequest?: boolean;
-  products?: string[];
-  quantities?: Array<{
+  detectedProducts?: Array<{
+    product: string;
     quantity: number;
-    unit: string;
+    confidence: 'high' | 'medium' | 'low';
+    productCode?: string;
+    brand?: string;
   }>;
   confidence?: 'high' | 'medium' | 'low' | 'none';
-  processingStatus?: 'processed_automatically' | 'needs_manual_processing' | 'non_quote_message' | 'error' | 'pending';
-  category?: 'quote_request' | 'non_quote_message' | 'pending_classification';
-  processingConfidence?: 'high' | 'medium' | 'low' | 'none';
 }
 
-export interface ImportResult {
-  success: boolean;
-  message: string;
-  productsAdded: number;
+export interface Product {
+  id: string;
+  user_id: string;
+  name: string;
+  product_code: string;
+  brand?: string;
+  unit_price: number;
+  gst_rate: number;
+  category?: string;
+  min_quantity?: number;
+  max_quantity?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QuoteRequest {
+  id: string;
+  emailId: string;
+  customerName: string;
+  customerEmail: string;
+  products: Array<{
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+  status: 'pending' | 'sent' | 'approved' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface QuoteTemplate {
   id: string;
   name: string;
   subject: string;
-  greeting: string;
   body: string;
-  signoff: string;
-}
-
-export interface ExportOptions {
-  format: 'csv' | 'pdf' | 'xlsx';
-  includeCompanyLogo: boolean;
-  includeTimestamp: boolean;
-}
-
-export interface GmailConnectionConfig {
-  isConnected: boolean;
-  lastSyncTime: string | null;
-  autoRefreshInterval: number; // in minutes
-  userName: string | null;
-  accessToken?: string;
-  refreshToken?: string;
-}
-
-export interface GoogleSheetsConfig {
-  isConnected: boolean;
-  spreadsheetId: string | null;
-  quotesSheetName: string;
-  productsSheetName: string;
+  isDefault: boolean;
 }
