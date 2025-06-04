@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { mockProducts } from "@/data/mockData";
+import { mockProducts, mockQuoteLogs } from "@/data/mockData";
 import { useToast } from "@/components/ui/use-toast";
 import { Send, Printer, Download, Wand2 } from "lucide-react";
 import { parseEmailForQuotation } from "@/services/emailParserService";
@@ -13,23 +13,74 @@ import { sendQuoteEmail } from "@/services/gmailService";
 import { defaultQuoteTemplate, generateEmailSubject, generateQuoteEmailBody } from "@/services/quoteService";
 import { logQuoteToSheet } from "@/services/gmailService";
 import { calculatePrice } from "@/services/pricingService";
+import { EmailMessage, QuoteLog } from "@/types";
 
-export function ProcessEmail() {
+interface ProcessEmailProps {
+  selectedEmail?: EmailMessage | null;
+  onEmailProcessed?: () => void;
+}
+
+export function ProcessEmail({ selectedEmail, onEmailProcessed }: ProcessEmailProps) {
   const { toast } = useToast();
+  
   const [emailData, setEmailData] = useState({
     from: "customer@example.com",
     subject: "Product Inquiry",
     body: "Hello, I would like to purchase 500 sheets of A4 paper. Could you please send me a quote? Thank you.",
     productName: "A4 Paper - 80gsm",
     quantity: 500,
-    calculatedPrice: 200.00 // 500 * 0.40
+    calculatedPrice: 200.00
   });
 
   const [quoteGenerated, setQuoteGenerated] = useState(false);
   const [autoAnalysisActive, setAutoAnalysisActive] = useState(false);
 
+  // Auto-populate when email is selected
+  useEffect(() => {
+    if (selectedEmail) {
+      // Extract sender email from "Name <email>" format
+      const emailMatch = selectedEmail.from.match(/<(.+)>/);
+      const extractedEmail = emailMatch ? emailMatch[1] : selectedEmail.from;
+      
+      // Auto-detect product and quantity if available
+      let productName = "A4 Paper - 80gsm";
+      let quantity = 1;
+      let calculatedPrice = 0.45;
+
+      if (selectedEmail.detectedProducts && selectedEmail.detectedProducts.length > 0) {
+        const firstProduct = selectedEmail.detectedProducts[0];
+        productName = firstProduct.product;
+        quantity = firstProduct.quantity;
+        
+        // Calculate price based on detected product
+        const pricing = calculatePrice(productName, quantity, mockProducts);
+        if (pricing) {
+          calculatedPrice = pricing.totalPrice;
+        }
+      }
+
+      setEmailData({
+        from: extractedEmail,
+        subject: selectedEmail.subject,
+        body: selectedEmail.body,
+        productName,
+        quantity,
+        calculatedPrice
+      });
+
+      // Auto-generate quote if we have good detection
+      if (selectedEmail.confidence === 'high' || selectedEmail.confidence === 'medium') {
+        setQuoteGenerated(true);
+      }
+
+      toast({
+        title: "Email Loaded",
+        description: `Processing email from ${extractedEmail}`,
+      });
+    }
+  }, [selectedEmail, toast]);
+
   const handleQuantityChange = (newQuantity: number) => {
-    // Find the appropriate price based on quantity
     const product = mockProducts.find(p => 
       p.name === emailData.productName && 
       newQuantity >= (p.min_quantity || 1) && 
@@ -47,7 +98,6 @@ export function ProcessEmail() {
   };
 
   const handleProductChange = (newProduct: string) => {
-    // Find the appropriate price based on selected product and current quantity
     const product = mockProducts.find(p => 
       p.name === newProduct && 
       emailData.quantity >= (p.min_quantity || 1) && 
@@ -74,16 +124,14 @@ export function ProcessEmail() {
 
   const handleSend = async () => {
     try {
-      // Parse the email for customer name and email
       const parsedInfo = parseEmailForQuotation({
-        id: "manual",
+        id: selectedEmail?.id || "manual",
         from: emailData.from,
         subject: emailData.subject,
         body: emailData.body,
         date: new Date().toISOString()
       });
       
-      // Generate email content
       const emailSubject = generateEmailSubject(defaultQuoteTemplate, emailData.productName);
       const product = mockProducts.find(p => 
         p.name === emailData.productName && 
@@ -99,14 +147,35 @@ export function ProcessEmail() {
         emailData.calculatedPrice
       );
       
-      // Send the email
       const emailSent = await sendQuoteEmail(
         parsedInfo.emailAddress,
         emailSubject,
         emailBody
       ).catch(() => false);
       
-      // Log quote to sheet with properly typed status
+      // Create new quote log entry
+      const newQuoteLog: QuoteLog = {
+        timestamp: new Date().toISOString(),
+        customerName: parsedInfo.customerName,
+        emailAddress: parsedInfo.emailAddress,
+        product: emailData.productName,
+        quantity: emailData.quantity,
+        pricePerUnit: pricePerUnit,
+        totalAmount: emailData.calculatedPrice,
+        status: emailSent ? 'Sent' : 'Failed',
+        extractedDetails: {
+          product: emailData.productName,
+          quantity: emailData.quantity,
+          products: [{
+            product: emailData.productName,
+            quantity: emailData.quantity
+          }]
+        }
+      };
+
+      // Add to mock data (in real app, this would save to database)
+      mockQuoteLogs.unshift(newQuoteLog);
+      
       await logQuoteToSheet({
         timestamp: new Date().toISOString(),
         customerName: parsedInfo.customerName,
@@ -128,6 +197,9 @@ export function ProcessEmail() {
       
       if (emailSent) {
         setQuoteGenerated(false);
+        if (onEmailProcessed) {
+          onEmailProcessed();
+        }
       }
     } catch (error) {
       console.error("Error sending quote:", error);
@@ -240,7 +312,7 @@ Date,${new Date().toLocaleDateString()}
       <CardHeader>
         <CardTitle>Process Email Request</CardTitle>
         <CardDescription>
-          Generate a quote from an email inquiry
+          {selectedEmail ? `Processing email: ${selectedEmail.subject}` : "Generate a quote from an email inquiry"}
         </CardDescription>
       </CardHeader>
       <CardContent>
