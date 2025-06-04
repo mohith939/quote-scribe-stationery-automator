@@ -47,6 +47,17 @@ export interface EmailMessage {
   }>;
   hasAttachments?: boolean;
   snippet?: string;
+  // Enhanced properties from Google Apps Script
+  isQuoteRequest?: boolean;
+  products?: string[];
+  quantities?: Array<{
+    quantity: number;
+    unit: string;
+  }>;
+  confidence?: 'high' | 'medium' | 'low' | 'none';
+  processingStatus?: 'processed_automatically' | 'needs_manual_processing' | 'non_quote_message' | 'error' | 'pending';
+  category?: 'quote_request' | 'non_quote_message' | 'pending_classification';
+  processingConfidence?: 'high' | 'medium' | 'low' | 'none';
 }
 
 export interface ImportResult {
