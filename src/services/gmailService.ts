@@ -1,3 +1,4 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,7 +27,7 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
-// Function to fetch unread emails from Gmail via Google Apps Script (Enhanced version)
+// Function to fetch unread emails from Gmail via Google Apps Script (Fixed version)
 export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -35,10 +36,10 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       return [];
     }
 
-    console.log('Fetching emails from enhanced script:', scriptUrl);
+    console.log('Fetching emails from script:', scriptUrl);
     
-    // Use the 'getEmails' action that your enhanced script expects
-    const response = await fetch(`${scriptUrl}?action=getEmails&_=${Date.now()}`, {
+    // Use the correct action parameter that your script expects
+    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=100&_=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -51,6 +52,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
     
     const responseText = await response.text();
     console.log('Raw response length:', responseText.length);
+    console.log('Raw response preview:', responseText.substring(0, 500));
     
     // Check if response is HTML (error page) or JSON
     if (responseText.startsWith('<!DOCTYPE html>') || responseText.includes('<html>')) {
@@ -65,17 +67,19 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       throw new Error('Invalid JSON response from Google Apps Script. Please check your script configuration.');
     }
     
-    console.log('Enhanced Gmail API response:', {
+    console.log('Gmail API response:', {
       success: data.success,
       emailCount: data.emails?.length || 0,
-      hasError: !!data.error
+      hasError: !!data.error,
+      totalCount: data.totalCount,
+      threadsProcessed: data.threadsProcessed
     });
     
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
-    // Map the enhanced email data with all the enhanced fields
+    // Map the email data with enhanced fields
     const emails = (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
@@ -98,7 +102,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
       processingConfidence: email.processingConfidence || 'none'
     }));
 
-    console.log(`Successfully fetched ${emails.length} unread emails with enhanced data`);
+    console.log(`Successfully fetched ${emails.length} unread emails`);
     return emails;
   } catch (error) {
     console.error("Error fetching unread emails:", error);
@@ -106,7 +110,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
   }
 };
 
-// Mark an email as read in Gmail (works with enhanced script)
+// Mark an email as read in Gmail
 export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -133,7 +137,7 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   }
 };
 
-// Send a quote email using the enhanced script
+// Send a quote email
 export const sendQuoteEmail = async (
   to: string,
   subject: string,
@@ -146,7 +150,6 @@ export const sendQuoteEmail = async (
       throw new Error('Google Apps Script not configured');
     }
 
-    // Use URL parameters for the enhanced script
     const params = new URLSearchParams({
       action: 'sendEmail',
       to: to,
@@ -177,7 +180,7 @@ export const sendQuoteEmail = async (
   }
 };
 
-// Log quote to Google Sheets using enhanced script
+// Log quote to Google Sheets
 export const logQuoteToSheet = async (quoteData: {
   timestamp: string;
   customerName: string;
@@ -245,7 +248,7 @@ export const processEmailById = async (emailId: string): Promise<any> => {
   }
 };
 
-// Get dashboard stats using enhanced script
+// Get dashboard stats
 export const getDashboardStats = async (): Promise<any> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -272,7 +275,7 @@ export const getDashboardStats = async (): Promise<any> => {
   }
 };
 
-// Test the enhanced Google Apps Script connection
+// Test the Google Apps Script connection
 export const testGoogleAppsScriptConnection = async (): Promise<{
   success: boolean;
   message: string;
