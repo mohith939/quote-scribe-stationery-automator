@@ -1,13 +1,18 @@
-
 export interface EmailMessage {
   id: string;
   from: string;
+  to?: string;
   subject: string;
   body: string;
+  htmlBody?: string;
   date: string;
+  threadId?: string;
   snippet?: string;
   hasAttachments?: boolean;
+  attachments?: any[];
   isQuoteRequest?: boolean;
+  products?: any[];
+  quantities?: any[];
   detectedProducts?: Array<{
     product: string;
     quantity: number;
@@ -16,6 +21,9 @@ export interface EmailMessage {
     brand?: string;
   }>;
   confidence?: 'high' | 'medium' | 'low' | 'none';
+  processingStatus?: string;
+  category?: string;
+  processingConfidence?: string;
 }
 
 export interface Product {
