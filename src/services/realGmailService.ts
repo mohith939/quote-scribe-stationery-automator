@@ -198,6 +198,34 @@ export class RealGmailService {
     return response.json();
   }
 
+  // Make authenticated POST request to Gmail API
+  private async makeGmailPostRequest<T>(endpoint: string, body: any): Promise<T> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    const response = await fetch(`${GMAIL_API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Token expired, clear it
+        this.accessToken = null;
+        localStorage.removeItem('gmail_access_token');
+        throw new Error('Gmail authentication expired. Please re-authenticate.');
+      }
+      throw new Error(`Gmail API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
   // Decode base64 URL-safe string
   private decodeBase64(data: string): string {
     try {
@@ -232,11 +260,8 @@ export class RealGmailService {
     }
 
     try {
-      await this.makeGmailRequest(`/users/me/messages/${messageId}/modify`, {
-        method: 'POST',
-        body: JSON.stringify({
-          removeLabelIds: ['UNREAD']
-        })
+      await this.makeGmailPostRequest(`/users/me/messages/${messageId}/modify`, {
+        removeLabelIds: ['UNREAD']
       });
       return true;
     } catch (error) {
