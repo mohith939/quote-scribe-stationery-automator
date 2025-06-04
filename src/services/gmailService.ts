@@ -127,6 +127,44 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
+// Enhanced error detection for HTML responses
+const isHtmlResponse = (text: string): boolean => {
+  const htmlIndicators = [
+    '<!DOCTYPE html>',
+    '<html>',
+    '<HTML>',
+    '<!doctype html>',
+    '<head>',
+    '<body>',
+    'text/html'
+  ];
+  
+  const lowerText = text.toLowerCase().trim();
+  return htmlIndicators.some(indicator => lowerText.includes(indicator.toLowerCase()));
+};
+
+// Parse error details from HTML response
+const parseHtmlError = (htmlText: string): string => {
+  // Common Google Apps Script error patterns
+  if (htmlText.includes('Script function not found')) {
+    return 'Apps Script function not found - check your script has the correct functions (doGet, doPost)';
+  }
+  if (htmlText.includes('Authorization required')) {
+    return 'Apps Script authorization required - redeploy with proper permissions';
+  }
+  if (htmlText.includes('Access denied')) {
+    return 'Apps Script access denied - check deployment permissions (should be "Anyone")';
+  }
+  if (htmlText.includes('Service invoked too many times')) {
+    return 'Apps Script quota exceeded - try again later';
+  }
+  if (htmlText.includes('ScriptError')) {
+    return 'Apps Script execution error - check script logs in Google Apps Script console';
+  }
+  
+  return 'HTML error page received - script deployment or permissions issue';
+};
+
 // Smart email fetching with quota management and caching
 export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: boolean = false): Promise<EmailMessage[]> => {
   try {
@@ -152,28 +190,51 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
     }
 
     console.log(`Fetching up to ${maxEmails} emails from Apps Script (${quotaCheck.remaining} calls remaining today)`);
+    console.log('Script URL:', scriptUrl);
     
     // Increment quota counter
     incrementApiCall();
     
     // Add maxEmails parameter to limit the fetch
-    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`, {
-      method: 'GET'
+    const fullUrl = `${scriptUrl}?action=getAllUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`;
+    console.log('Fetching from URL:', fullUrl);
+    
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
     });
     
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    
     if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}. Check script deployment and permissions.`);
     }
     
     const text = await response.text();
     console.log('Response received, length:', text.length);
+    console.log('Response preview (first 500 chars):', text.substring(0, 500));
     
-    // Check for HTML error pages
-    if (text.includes('<html>') || text.includes('<!DOCTYPE')) {
-      throw new Error('Received HTML error page - check script deployment');
+    // Enhanced HTML error detection
+    if (isHtmlResponse(text)) {
+      const errorMessage = parseHtmlError(text);
+      console.error('HTML Response Details:', text.substring(0, 1000));
+      throw new Error(errorMessage);
     }
     
-    const data = JSON.parse(text);
+    // Try to parse JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error('JSON Parse Error:', parseError);
+      console.error('Raw response:', text);
+      throw new Error('Invalid JSON response from Apps Script. Check script execution and logs.');
+    }
+    
     console.log('Parsed response:', data);
     
     if (!data.success) {
@@ -181,7 +242,7 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
       if (data.error && data.error.includes('Service invoked too many times')) {
         throw new Error('Gmail quota exceeded for today. Try again tomorrow or reduce email fetch limit.');
       }
-      throw new Error(data.error || 'Failed to fetch emails');
+      throw new Error(data.error || 'Failed to fetch emails from Apps Script');
     }
     
     // Map emails to our interface with enhanced processing

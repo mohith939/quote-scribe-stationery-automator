@@ -1,10 +1,9 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings, AlertTriangle, Trash2 } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings, AlertTriangle, Trash2, AlertCircle } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -26,6 +25,7 @@ export function EmailInboxReal() {
   const [connectionStatus, setConnectionStatus] = useState<string>('');
   const [quotaStatus, setQuotaStatus] = useState(getQuotaStatus());
   const [maxEmails, setMaxEmails] = useState(10);
+  const [lastError, setLastError] = useState<string>('');
 
   useEffect(() => {
     // Load script URL from localStorage if available
@@ -48,7 +48,9 @@ export function EmailInboxReal() {
       return;
     }
 
+    setLastError('');
     try {
+      console.log('Testing connection to:', scriptUrl);
       const result = await testGoogleAppsScriptConnection();
       setConnectionStatus(result.message);
       
@@ -58,9 +60,11 @@ export function EmailInboxReal() {
         variant: result.success ? "default" : "destructive"
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
+      setLastError(errorMessage);
       toast({
         title: "Connection Error",
-        description: "Failed to test connection. Check your script URL.",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -100,8 +104,14 @@ export function EmailInboxReal() {
     }
 
     setIsLoading(true);
+    setLastError('');
+    
     try {
       console.log('Fetching emails from Google Apps Script...');
+      console.log('Script URL:', scriptUrl);
+      console.log('Max emails:', maxEmails);
+      console.log('Force refresh:', forceRefresh);
+      
       const fetchedEmails = await fetchUnreadEmails(maxEmails, forceRefresh);
       
       // Enhanced email processing with quote detection
@@ -129,12 +139,30 @@ export function EmailInboxReal() {
     } catch (error) {
       console.error('Error fetching emails:', error);
       
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch emails";
+      setLastError(errorMessage);
+      
       // Update quota status even on error
       setQuotaStatus(getQuotaStatus());
       
+      // Enhanced error messaging
+      let toastDescription = errorMessage;
+      let toastTitle = "Fetch Failed";
+      
+      if (errorMessage.includes('HTML error page')) {
+        toastTitle = "Apps Script Deployment Issue";
+        toastDescription = "Your Apps Script isn't deployed correctly. Check deployment settings and permissions.";
+      } else if (errorMessage.includes('quota exceeded')) {
+        toastTitle = "Quota Exceeded";
+        toastDescription = "Daily Gmail quota exceeded. Try again tomorrow or reduce email fetch limit.";
+      } else if (errorMessage.includes('Authorization required')) {
+        toastTitle = "Authorization Required";
+        toastDescription = "Apps Script needs authorization. Redeploy with proper permissions.";
+      }
+      
       toast({
-        title: "Fetch Failed",
-        description: error instanceof Error ? error.message : "Failed to fetch emails",
+        title: toastTitle,
+        description: toastDescription,
         variant: "destructive"
       });
     } finally {
@@ -306,6 +334,30 @@ export function EmailInboxReal() {
         </CardHeader>
         
         <CardContent>
+          {/* Error Display */}
+          {lastError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                <div>
+                  <div className="text-sm font-medium text-red-800">Last Error:</div>
+                  <div className="text-sm text-red-700">{lastError}</div>
+                  {lastError.includes('HTML error page') && (
+                    <div className="text-xs text-red-600 mt-2">
+                      <strong>Common fixes:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        <li>Redeploy your Apps Script as a web app</li>
+                        <li>Set "Execute as: Me" and "Access: Anyone"</li>
+                        <li>Make sure your script has doGet() function</li>
+                        <li>Check Apps Script logs for errors</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Quota Status Display */}
           <div className={`mb-4 p-3 border rounded-lg ${quotaStatus.canMakeCall ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
             <div className="flex items-center justify-between">
@@ -342,7 +394,7 @@ export function EmailInboxReal() {
           </div>
 
           {/* Connection Status */}
-          {scriptUrl && (
+          {scriptUrl && !lastError && (
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600" />
