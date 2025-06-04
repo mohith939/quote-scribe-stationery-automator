@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings, AlertTriangle, Trash2, AlertCircle } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings, AlertTriangle, Trash2, AlertCircle, ExternalLink, Copy } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -145,19 +145,31 @@ export function EmailInboxReal() {
       // Update quota status even on error
       setQuotaStatus(getQuotaStatus());
       
-      // Enhanced error messaging
+      // Enhanced error messaging based on error type
+      const errorType = getErrorType(errorMessage);
       let toastDescription = errorMessage;
       let toastTitle = "Fetch Failed";
       
-      if (errorMessage.includes('HTML error page')) {
-        toastTitle = "Apps Script Deployment Issue";
-        toastDescription = "Your Apps Script isn't deployed correctly. Check deployment settings and permissions.";
-      } else if (errorMessage.includes('quota exceeded')) {
-        toastTitle = "Quota Exceeded";
-        toastDescription = "Daily Gmail quota exceeded. Try again tomorrow or reduce email fetch limit.";
-      } else if (errorMessage.includes('Authorization required')) {
-        toastTitle = "Authorization Required";
-        toastDescription = "Apps Script needs authorization. Redeploy with proper permissions.";
+      switch (errorType) {
+        case 'cors':
+          toastTitle = "CORS Configuration Error";
+          toastDescription = "Apps Script deployment needs CORS fix. Check error details below.";
+          break;
+        case 'deployment':
+          toastTitle = "Apps Script Deployment Issue";
+          toastDescription = "Script deployment or permissions problem. See troubleshooting below.";
+          break;
+        case 'quota':
+          toastTitle = "Quota Exceeded";
+          toastDescription = "Daily Gmail quota exceeded. Try again tomorrow.";
+          break;
+        case 'network':
+          toastTitle = "Network/Connection Error";
+          toastDescription = "Cannot reach Apps Script. Check URL and deployment.";
+          break;
+        default:
+          toastTitle = "Fetch Failed";
+          toastDescription = errorMessage.length > 100 ? "Check error details below" : errorMessage;
       }
       
       toast({
@@ -291,6 +303,30 @@ export function EmailInboxReal() {
     }
   };
 
+  const getErrorType = (error: string) => {
+    if (error.includes('CORS') || error.includes('cross-origin') || error.includes('Access-Control-Allow-Origin')) {
+      return 'cors';
+    }
+    if (error.includes('HTML error page') || error.includes('deployment')) {
+      return 'deployment';
+    }
+    if (error.includes('quota exceeded')) {
+      return 'quota';
+    }
+    if (error.includes('Failed to fetch') || error.includes('NetworkError')) {
+      return 'network';
+    }
+    return 'general';
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied to clipboard",
+      description: "Text has been copied to your clipboard",
+    });
+  };
+
   return (
     <>
       <Card className="w-full">
@@ -334,18 +370,65 @@ export function EmailInboxReal() {
         </CardHeader>
         
         <CardContent>
-          {/* Error Display */}
+          {/* Enhanced Error Display with CORS-specific guidance */}
           {lastError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                <div>
-                  <div className="text-sm font-medium text-red-800">Last Error:</div>
-                  <div className="text-sm text-red-700">{lastError}</div>
-                  {lastError.includes('HTML error page') && (
-                    <div className="text-xs text-red-600 mt-2">
-                      <strong>Common fixes:</strong>
-                      <ul className="list-disc list-inside mt-1">
+                <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-red-800 mb-2">Error Details:</div>
+                  <div className="text-sm text-red-700 mb-3 font-mono bg-red-100 p-2 rounded">
+                    {lastError}
+                  </div>
+                  
+                  {getErrorType(lastError) === 'cors' && (
+                    <div className="text-sm text-red-800">
+                      <div className="font-medium mb-2">🔧 CORS Fix Required:</div>
+                      <ol className="list-decimal list-inside space-y-1 mb-3">
+                        <li>Open your Google Apps Script project</li>
+                        <li>Click "Deploy" → "Manage deployments"</li>
+                        <li>Click the edit icon (pencil) on your deployment</li>
+                        <li>Under "Who has access", select <strong>"Anyone"</strong></li>
+                        <li>Click "Deploy" and copy the new URL</li>
+                        <li>Update the URL in Settings below</li>
+                      </ol>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(lastError)}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy Error
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open('https://script.google.com', '_blank')}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Open Apps Script
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {getErrorType(lastError) === 'network' && (
+                    <div className="text-sm text-red-800">
+                      <div className="font-medium mb-2">🌐 Network/URL Issues:</div>
+                      <ul className="list-disc list-inside space-y-1 mb-3">
+                        <li>Verify your script URL is complete and correct</li>
+                        <li>Test the URL directly in a browser</li>
+                        <li>Make sure the script is deployed as a web app</li>
+                        <li>Try creating a new deployment</li>
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {(getErrorType(lastError) === 'deployment' || lastError.includes('HTML error page')) && (
+                    <div className="text-sm text-red-800">
+                      <div className="font-medium mb-2">⚙️ Deployment Issues:</div>
+                      <ul className="list-disc list-inside space-y-1 mb-3">
                         <li>Redeploy your Apps Script as a web app</li>
                         <li>Set "Execute as: Me" and "Access: Anyone"</li>
                         <li>Make sure your script has doGet() function</li>

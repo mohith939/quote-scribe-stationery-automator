@@ -127,6 +127,23 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
+// Enhanced error detection for different error types
+const isCorsError = (error: any): boolean => {
+  const errorMessage = error?.message || '';
+  return errorMessage.includes('CORS') || 
+         errorMessage.includes('Access-Control-Allow-Origin') ||
+         errorMessage.includes('cross-origin') ||
+         errorMessage.includes('preflight');
+};
+
+const isNetworkError = (error: any): boolean => {
+  const errorMessage = error?.message || '';
+  return errorMessage.includes('Failed to fetch') ||
+         errorMessage.includes('ERR_FAILED') ||
+         errorMessage.includes('NetworkError') ||
+         errorMessage.includes('net::');
+};
+
 // Enhanced error detection for HTML responses
 const isHtmlResponse = (text: string): boolean => {
   const htmlIndicators = [
@@ -163,6 +180,44 @@ const parseHtmlError = (htmlText: string): string => {
   }
   
   return 'HTML error page received - script deployment or permissions issue';
+};
+
+// Enhanced error handler with specific CORS guidance
+const handleFetchError = (error: any): string => {
+  if (isCorsError(error)) {
+    return `CORS Error: Your Google Apps Script is not properly configured for cross-origin requests. 
+
+SOLUTION:
+1. Open your Google Apps Script project
+2. Click "Deploy" → "Manage deployments"
+3. Click the edit icon (pencil) on your deployment
+4. Under "Who has access", select "Anyone" (not "Anyone with Google account")
+5. Click "Deploy"
+6. Copy the new URL and update it in settings
+
+If still not working:
+- Make sure your script has both doGet() and doPost() functions
+- Check that your script is deployed as a "Web app"
+- Try creating a new deployment instead of updating existing one`;
+  }
+  
+  if (isNetworkError(error)) {
+    return `Network Error: Unable to reach your Google Apps Script.
+
+COMMON CAUSES:
+- Script URL is incorrect or incomplete
+- Apps Script is not deployed as a web app
+- Google Services are temporarily unavailable
+- Script was deleted or permissions changed
+
+SOLUTIONS:
+1. Verify your script URL is complete and correct
+2. Test the URL directly in a browser
+3. Redeploy your script as a new web app
+4. Check Google Apps Script status page`;
+  }
+
+  return error?.message || 'Unknown error occurred';
 };
 
 // Smart email fetching with quota management and caching
@@ -276,7 +331,10 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
     
   } catch (error) {
     console.error("Email fetch error:", error);
-    throw error;
+    
+    // Enhanced error handling with specific guidance
+    const enhancedError = new Error(handleFetchError(error));
+    throw enhancedError;
   }
 };
 
