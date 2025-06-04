@@ -1,6 +1,104 @@
-
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
+
+// Quota management
+const QUOTA_STORAGE_KEY = 'gmail_quota_tracker';
+const MAX_DAILY_CALLS = 200; // Conservative limit
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const EMAIL_CACHE_KEY = 'cached_emails';
+const LAST_FETCH_KEY = 'last_email_fetch';
+
+interface QuotaTracker {
+  date: string;
+  callCount: number;
+  lastReset: number;
+}
+
+// Get and manage quota tracking
+const getQuotaTracker = (): QuotaTracker => {
+  try {
+    const stored = localStorage.getItem(QUOTA_STORAGE_KEY);
+    if (stored) {
+      const tracker = JSON.parse(stored);
+      const today = new Date().toDateString();
+      
+      // Reset if it's a new day
+      if (tracker.date !== today) {
+        return {
+          date: today,
+          callCount: 0,
+          lastReset: Date.now()
+        };
+      }
+      return tracker;
+    }
+  } catch (error) {
+    console.error('Error reading quota tracker:', error);
+  }
+  
+  return {
+    date: new Date().toDateString(),
+    callCount: 0,
+    lastReset: Date.now()
+  };
+};
+
+const updateQuotaTracker = (tracker: QuotaTracker) => {
+  try {
+    localStorage.setItem(QUOTA_STORAGE_KEY, JSON.stringify(tracker));
+  } catch (error) {
+    console.error('Error saving quota tracker:', error);
+  }
+};
+
+const canMakeApiCall = (): { allowed: boolean; remaining: number } => {
+  const tracker = getQuotaTracker();
+  const remaining = MAX_DAILY_CALLS - tracker.callCount;
+  return {
+    allowed: tracker.callCount < MAX_DAILY_CALLS,
+    remaining: Math.max(0, remaining)
+  };
+};
+
+const incrementApiCall = () => {
+  const tracker = getQuotaTracker();
+  tracker.callCount += 1;
+  updateQuotaTracker(tracker);
+};
+
+// Enhanced caching system
+const getCachedEmails = (): { emails: EmailMessage[]; timestamp: number } | null => {
+  try {
+    const cached = localStorage.getItem(EMAIL_CACHE_KEY);
+    const lastFetch = localStorage.getItem(LAST_FETCH_KEY);
+    
+    if (cached && lastFetch) {
+      const timestamp = parseInt(lastFetch);
+      const now = Date.now();
+      
+      // Check if cache is still valid (within CACHE_DURATION)
+      if (now - timestamp < CACHE_DURATION) {
+        return {
+          emails: JSON.parse(cached),
+          timestamp
+        };
+      }
+    }
+  } catch (error) {
+    console.error('Error reading email cache:', error);
+  }
+  return null;
+};
+
+const setCachedEmails = (emails: EmailMessage[]) => {
+  try {
+    const timestamp = Date.now();
+    localStorage.setItem(EMAIL_CACHE_KEY, JSON.stringify(emails));
+    localStorage.setItem(LAST_FETCH_KEY, timestamp.toString());
+  } catch (error) {
+    console.error('Error caching emails:', error);
+  }
+};
 
 // Get user's Google Apps Script URL
 const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
@@ -29,16 +127,34 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   }
 };
 
-// Enhanced email fetching with quota handling
-export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMessage[]> => {
+// Smart email fetching with quota management and caching
+export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: boolean = false): Promise<EmailMessage[]> => {
   try {
+    // Check quota first
+    const quotaCheck = canMakeApiCall();
+    if (!quotaCheck.allowed) {
+      throw new Error(`Daily Gmail quota exceeded. Remaining calls: ${quotaCheck.remaining}. Try again tomorrow or contact support.`);
+    }
+
+    // Try cache first if not forcing refresh
+    if (!forceRefresh) {
+      const cached = getCachedEmails();
+      if (cached) {
+        console.log(`Using cached emails (${cached.emails.length} emails, cached ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
+        return cached.emails.slice(0, maxEmails);
+      }
+    }
+
     const scriptUrl = await getGoogleAppsScriptUrl();
     if (!scriptUrl) {
       console.warn('Google Apps Script not configured');
       return [];
     }
 
-    console.log(`Fetching up to ${maxEmails} emails from:`, scriptUrl);
+    console.log(`Fetching up to ${maxEmails} emails from Apps Script (${quotaCheck.remaining} calls remaining today)`);
+    
+    // Increment quota counter
+    incrementApiCall();
     
     // Add maxEmails parameter to limit the fetch
     const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`, {
@@ -91,12 +207,50 @@ export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMe
       processingConfidence: email.processingConfidence || 'none'
     }));
 
+    // Cache the results
+    setCachedEmails(emails);
+
     console.log(`Successfully fetched ${emails.length} emails`);
     return emails;
     
   } catch (error) {
     console.error("Email fetch error:", error);
     throw error;
+  }
+};
+
+// Get quota status for UI display
+export const getQuotaStatus = () => {
+  const tracker = getQuotaTracker();
+  const quotaCheck = canMakeApiCall();
+  
+  return {
+    callsUsed: tracker.callCount,
+    callsRemaining: quotaCheck.remaining,
+    maxCalls: MAX_DAILY_CALLS,
+    canMakeCall: quotaCheck.allowed,
+    resetTime: new Date(tracker.lastReset + 24 * 60 * 60 * 1000).toLocaleString()
+  };
+};
+
+// Clear cache manually
+export const clearEmailCache = () => {
+  try {
+    localStorage.removeItem(EMAIL_CACHE_KEY);
+    localStorage.removeItem(LAST_FETCH_KEY);
+    console.log('Email cache cleared');
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+  }
+};
+
+// Reset quota (for testing/admin)
+export const resetQuota = () => {
+  try {
+    localStorage.removeItem(QUOTA_STORAGE_KEY);
+    console.log('Quota tracker reset');
+  } catch (error) {
+    console.error('Error resetting quota:', error);
   }
 };
 

@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings, AlertTriangle, Trash2 } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
-import { fetchUnreadEmails, testGoogleAppsScriptConnection, markEmailAsRead } from "@/services/gmailService";
+import { fetchUnreadEmails, testGoogleAppsScriptConnection, markEmailAsRead, getQuotaStatus, clearEmailCache } from "@/services/gmailService";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
@@ -24,6 +24,8 @@ export function EmailInboxReal() {
   const [showSettings, setShowSettings] = useState(false);
   const [scriptUrl, setScriptUrl] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<string>('');
+  const [quotaStatus, setQuotaStatus] = useState(getQuotaStatus());
+  const [maxEmails, setMaxEmails] = useState(10);
 
   useEffect(() => {
     // Load script URL from localStorage if available
@@ -31,6 +33,9 @@ export function EmailInboxReal() {
     if (savedUrl) {
       setScriptUrl(savedUrl);
     }
+
+    // Update quota status
+    setQuotaStatus(getQuotaStatus());
   }, []);
 
   const handleTestConnection = async () => {
@@ -72,7 +77,7 @@ export function EmailInboxReal() {
     setShowSettings(false);
   };
 
-  const handleFetchEmails = async () => {
+  const handleFetchEmails = async (forceRefresh: boolean = false) => {
     if (!scriptUrl.trim()) {
       setShowSettings(true);
       toast({
@@ -83,10 +88,21 @@ export function EmailInboxReal() {
       return;
     }
 
+    // Check quota before attempting
+    const currentQuotaStatus = getQuotaStatus();
+    if (!currentQuotaStatus.canMakeCall && !forceRefresh) {
+      toast({
+        title: "Quota Exceeded",
+        description: `Daily quota exceeded (${currentQuotaStatus.callsUsed}/${currentQuotaStatus.maxCalls}). Try again tomorrow.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       console.log('Fetching emails from Google Apps Script...');
-      const fetchedEmails = await fetchUnreadEmails(50);
+      const fetchedEmails = await fetchUnreadEmails(maxEmails, forceRefresh);
       
       // Enhanced email processing with quote detection
       const processedEmails = fetchedEmails.map(email => ({
@@ -100,14 +116,22 @@ export function EmailInboxReal() {
       setEmails(processedEmails);
       setFilteredEmails(processedEmails);
       
+      // Update quota status
+      setQuotaStatus(getQuotaStatus());
+      
+      const cacheMessage = forceRefresh ? "" : " (using smart caching)";
       toast({
         title: "Emails Fetched",
-        description: `Successfully fetched ${processedEmails.length} unread emails`,
+        description: `Successfully fetched ${processedEmails.length} unread emails${cacheMessage}`,
       });
 
       console.log(`Fetched ${processedEmails.length} emails:`, processedEmails);
     } catch (error) {
       console.error('Error fetching emails:', error);
+      
+      // Update quota status even on error
+      setQuotaStatus(getQuotaStatus());
+      
       toast({
         title: "Fetch Failed",
         description: error instanceof Error ? error.message : "Failed to fetch emails",
@@ -116,6 +140,14 @@ export function EmailInboxReal() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearCache = () => {
+    clearEmailCache();
+    toast({
+      title: "Cache Cleared",
+      description: "Email cache has been cleared. Next fetch will get fresh data.",
+    });
   };
 
   const detectQuoteRequest = (text: string): boolean => {
@@ -253,19 +285,62 @@ export function EmailInboxReal() {
                 Settings
               </Button>
               <Button 
-                onClick={handleFetchEmails}
+                onClick={() => handleFetchEmails(false)}
                 disabled={isLoading}
                 variant="outline"
                 size="sm"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                {isLoading ? 'Fetching...' : 'Fetch Emails'}
+                {isLoading ? 'Fetching...' : 'Smart Fetch'}
+              </Button>
+              <Button 
+                onClick={() => handleFetchEmails(true)}
+                disabled={isLoading}
+                size="sm"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Fetching...' : 'Force Refresh'}
               </Button>
             </div>
           </div>
         </CardHeader>
         
         <CardContent>
+          {/* Quota Status Display */}
+          <div className={`mb-4 p-3 border rounded-lg ${quotaStatus.canMakeCall ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {quotaStatus.canMakeCall ? (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={`text-sm font-medium ${quotaStatus.canMakeCall ? 'text-green-800' : 'text-red-800'}`}>
+                  Quota: {quotaStatus.callsUsed}/{quotaStatus.maxCalls} calls used today
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {quotaStatus.callsRemaining} remaining
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearCache}
+                  className="h-6 px-2"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Clear Cache
+                </Button>
+              </div>
+            </div>
+            {!quotaStatus.canMakeCall && (
+              <div className="text-xs text-red-600 mt-1">
+                Daily quota exceeded. Resets at: {quotaStatus.resetTime}
+              </div>
+            )}
+          </div>
+
           {/* Connection Status */}
           {scriptUrl && (
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -425,7 +500,7 @@ export function EmailInboxReal() {
           <DialogHeader>
             <DialogTitle>Google Apps Script Configuration</DialogTitle>
             <DialogDescription>
-              Enter your Google Apps Script URL to connect Gmail integration
+              Configure your Google Apps Script URL and fetch settings
             </DialogDescription>
           </DialogHeader>
           
@@ -439,16 +514,31 @@ export function EmailInboxReal() {
                 placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
               />
             </div>
+
+            <div>
+              <Label htmlFor="maxEmails">Max Emails to Fetch (1-50)</Label>
+              <Input
+                id="maxEmails"
+                type="number"
+                min="1"
+                max="50"
+                value={maxEmails}
+                onChange={(e) => setMaxEmails(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+              />
+              <div className="text-xs text-gray-500 mt-1">
+                Lower numbers help conserve your daily quota
+              </div>
+            </div>
             
             <div className="bg-blue-50 p-3 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Setup Instructions:</h4>
-              <ol className="text-sm text-blue-800 list-decimal list-inside space-y-1">
-                <li>Go to script.google.com and create a new project</li>
-                <li>Paste the provided Apps Script code</li>
-                <li>Deploy as a web app with "Execute as: Me"</li>
-                <li>Set access to "Anyone"</li>
-                <li>Copy the web app URL and paste it above</li>
-              </ol>
+              <h4 className="font-medium text-blue-900 mb-2">Quota Management:</h4>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+                <li>Smart caching reduces API calls</li>
+                <li>Daily limit: {quotaStatus.maxCalls} calls</li>
+                <li>Cache duration: 5 minutes</li>
+                <li>Use "Smart Fetch" to leverage cache</li>
+                <li>Use "Force Refresh" only when needed</li>
+              </ul>
             </div>
             
             {scriptUrl && (
