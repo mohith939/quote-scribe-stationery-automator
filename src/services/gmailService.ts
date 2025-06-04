@@ -1,3 +1,4 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -32,7 +33,7 @@ export const fetchUnreadEmails = async (): Promise<EmailMessage[]> => {
 
     console.log('Fetching emails from:', scriptUrl);
     
-    const response = await fetch(`${scriptUrl}?action=getEmails&_=${Date.now()}`, {
+    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&_=${Date.now()}`, {
       method: 'GET'
     });
     
@@ -132,13 +133,109 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
   }
 };
 
-// Keep other functions simple
+// Mark email as read - simple implementation
 export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
-  console.log('Mark as read not implemented in simple version');
-  return true;
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      console.warn('Google Apps Script not configured');
+      return false;
+    }
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'markAsRead',
+        emailId: emailId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.success || false;
+  } catch (error) {
+    console.error('Error marking email as read:', error);
+    return false;
+  }
 };
 
+// Send quote email - simple implementation
 export const sendQuoteEmail = async (to: string, subject: string, body: string): Promise<boolean> => {
-  console.log('Send email not implemented in simple version');
-  return true;
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      console.warn('Google Apps Script not configured');
+      return false;
+    }
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'sendEmail',
+        to: to,
+        subject: subject,
+        body: body
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.success || false;
+  } catch (error) {
+    console.error('Error sending email:', error);
+    return false;
+  }
+};
+
+// Log quote to sheet - simple implementation
+export const logQuoteToSheet = async (quoteData: {
+  timestamp: string;
+  customerName: string;
+  emailAddress: string;
+  product: string;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  status: 'Sent' | 'Failed';
+}): Promise<boolean> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      console.warn('Google Apps Script not configured');
+      return false;
+    }
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'logQuote',
+        quoteData: quoteData
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.success || false;
+  } catch (error) {
+    console.error('Error logging quote to sheet:', error);
+    return false;
+  }
 };
