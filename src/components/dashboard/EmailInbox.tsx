@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,11 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseEmailForMultipleProducts } from "@/services/advancedEmailParser";
 
-interface EmailInboxProps {
-  onProcessEmail?: (email: EmailMessage) => void;
-}
-
-export function EmailInbox({ onProcessEmail }: EmailInboxProps) {
+export function EmailInbox() {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [filteredEmails, setFilteredEmails] = useState<EmailMessage[]>([]);
@@ -49,28 +46,28 @@ export function EmailInbox({ onProcessEmail }: EmailInboxProps) {
     {
       id: "mock-1",
       from: "John Smith <john@example.com>",
-      subject: "Quote Request for A4 Paper",
-      body: "Hi, I need a quote for 2000 sheets of A4 paper for our office. We're looking for 80gsm quality. Please send pricing details.",
+      subject: "Quote Request for Digital Force Gauge",
+      body: "Hi, I need a quote for 2 units of ZTA-500N Digital Force Gauge and 5 pieces of glass thermometers. Please send pricing details for bulk order.",
       date: new Date().toISOString(),
-      snippet: "Hi, I need a quote for 2000 sheets of A4 paper...",
+      snippet: "Hi, I need a quote for 2 units of ZTA-500N Digital Force Gauge...",
       hasAttachments: false
     },
     {
       id: "mock-2", 
       from: "Sarah Wilson <sarah@company.com>",
-      subject: "Bulk Order - Ballpoint Pens",
-      body: "Hello, can you provide a quotation for 300 blue ballpoint pens? We need them for our office supplies.",
+      subject: "Product Information Needed",
+      body: "Hello, can you provide specifications for your metallic plates? We're researching suppliers for our upcoming project.",
       date: new Date(Date.now() - 86400000).toISOString(),
-      snippet: "Hello, can you provide a quotation for 300 blue ballpoint pens...",
+      snippet: "Hello, can you provide specifications for your metallic plates...",
       hasAttachments: false
     },
     {
       id: "mock-3",
       from: "Mike Johnson <mike@procurement.com>",
-      subject: "Stapler Requirements",
-      body: "We need 75 medium-sized staplers for our company offices. Could you please send us your best pricing?",
+      subject: "Re: General Inquiry",
+      body: "Thanks for your previous email. Looking forward to our meeting next week.",
       date: new Date(Date.now() - 172800000).toISOString(),
-      snippet: "We need 75 medium-sized staplers for our company...",
+      snippet: "Thanks for your previous email. Looking forward to our meeting...",
       hasAttachments: false
     }
   ];
@@ -135,13 +132,10 @@ export function EmailInbox({ onProcessEmail }: EmailInboxProps) {
   };
 
   const handleProcessQuote = (email: EmailMessage) => {
-    if (onProcessEmail) {
-      onProcessEmail(email);
-    }
-    
+    // Add to processing queue (this would typically update a state management store)
     toast({
-      title: "Email Sent to Processing",
-      description: `Email from ${extractSenderName(email.from)} sent to quote processing`,
+      title: "Email Added to Processing Queue",
+      description: `Email from ${extractSenderName(email.from)} moved to processing queue`,
     });
     
     // Remove from current list
