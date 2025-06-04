@@ -1,9 +1,17 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
 // Get user's Google Apps Script URL
 const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   try {
+    // Try to get from localStorage first for quick access
+    const localUrl = localStorage.getItem('google_apps_script_url');
+    if (localUrl) {
+      return localUrl;
+    }
+
+    // Fallback to database
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -17,7 +25,7 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
     return data?.script_url || null;
   } catch (error) {
     console.error('Error getting script URL:', error);
-    return null;
+    return localStorage.getItem('google_apps_script_url');
   }
 };
 
@@ -33,7 +41,7 @@ export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMe
     console.log(`Fetching up to ${maxEmails} emails from:`, scriptUrl);
     
     // Add maxEmails parameter to limit the fetch
-    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxEmails=${maxEmails}&_=${Date.now()}`, {
+    const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`, {
       method: 'GET'
     });
     
@@ -60,7 +68,7 @@ export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMe
       throw new Error(data.error || 'Failed to fetch emails');
     }
     
-    // Map emails to our interface
+    // Map emails to our interface with enhanced processing
     const emails = (data.emails || []).map((email: any) => ({
       id: email.id,
       from: email.from,
@@ -72,15 +80,15 @@ export const fetchUnreadEmails = async (maxEmails: number = 10): Promise<EmailMe
       snippet: email.snippet,
       attachments: email.attachments || [],
       hasAttachments: email.hasAttachments || false,
-      // Add default values for enhanced fields
-      isQuoteRequest: false,
-      products: [],
-      quantities: [],
-      confidence: 'none',
-      processingStatus: 'pending',
-      category: 'general',
-      processingConfidence: 'none',
-      htmlBody: ''
+      htmlBody: email.htmlBody || '',
+      // Enhanced fields with Apps Script processing
+      isQuoteRequest: email.isQuoteRequest || false,
+      products: email.products || [],
+      quantities: email.quantities || [],
+      confidence: email.confidence || 'none',
+      processingStatus: email.processingStatus || 'pending',
+      category: email.category || 'general',
+      processingConfidence: email.processingConfidence || 'none'
     }));
 
     console.log(`Successfully fetched ${emails.length} emails`);
@@ -104,7 +112,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     if (!scriptUrl) {
       return {
         success: false,
-        message: 'Google Apps Script not configured'
+        message: 'Google Apps Script URL not configured. Please add your script URL in settings.'
       };
     }
 
@@ -119,7 +127,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     if (text.includes('<html>')) {
       return {
         success: false,
-        message: 'Script deployment error - check permissions'
+        message: 'Script deployment error - check permissions and deployment settings'
       };
     }
     
@@ -136,7 +144,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
     return {
       success: data.success,
       message: data.message || 'Connection test completed',
-      emailCount: data.unread_emails || data.emailCount
+      emailCount: data.emailCount || data.unreadEmails || 0
     };
     
   } catch (error) {
@@ -147,7 +155,7 @@ export const testGoogleAppsScriptConnection = async (): Promise<{
   }
 };
 
-// Mark email as read - simple implementation
+// Mark email as read
 export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
@@ -179,8 +187,8 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   }
 };
 
-// Send quote email - simple implementation
-export const sendQuoteEmail = async (to: string, subject: string, body: string): Promise<boolean> => {
+// Enhanced quote email sending with reply capability
+export const sendQuoteEmail = async (to: string, subject: string, body: string, originalEmailId?: string): Promise<boolean> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
     if (!scriptUrl) {
@@ -197,7 +205,8 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string):
         action: 'sendEmail',
         to: to,
         subject: subject,
-        body: body
+        body: body,
+        emailId: originalEmailId // For marking original as read
       })
     });
 
@@ -213,7 +222,7 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string):
   }
 };
 
-// Log quote to sheet - simple implementation
+// Enhanced quote logging
 export const logQuoteToSheet = async (quoteData: {
   timestamp: string;
   customerName: string;
@@ -254,3 +263,33 @@ export const logQuoteToSheet = async (quoteData: {
   }
 };
 
+// Get dashboard statistics from Apps Script
+export const getDashboardStats = async (): Promise<{
+  success: boolean;
+  stats?: {
+    unreadEmails: number;
+    quoteRequests: number;
+    processedToday: number;
+    successRate: number;
+  };
+}> => {
+  try {
+    const scriptUrl = await getGoogleAppsScriptUrl();
+    if (!scriptUrl) {
+      return { success: false };
+    }
+
+    const response = await fetch(`${scriptUrl}?action=getDashboardStats&_=${Date.now()}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+    
+  } catch (error) {
+    console.error('Error getting dashboard stats:', error);
+    return { success: false };
+  }
+};

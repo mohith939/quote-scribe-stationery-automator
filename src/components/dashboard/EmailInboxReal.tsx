@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, AlertTriangle } from "lucide-react";
+import { Mail, RefreshCw, Inbox, User, Clock, Filter, Edit, Send, CheckCircle, Settings } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { realGmailService } from "@/services/realGmailService";
-import { GmailAuth } from "./GmailAuth";
+import { Input } from "@/components/ui/input";
+import { fetchUnreadEmails, testGoogleAppsScriptConnection, markEmailAsRead } from "@/services/gmailService";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
@@ -21,18 +21,63 @@ export function EmailInboxReal() {
   const [filterType, setFilterType] = useState<'all' | 'quote' | 'non-quote'>('all');
   const [editingEmail, setEditingEmail] = useState<EmailMessage | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(realGmailService.isAuthenticated());
+  const [showSettings, setShowSettings] = useState(false);
+  const [scriptUrl, setScriptUrl] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<string>('');
 
   useEffect(() => {
-    // Check authentication status on component mount
-    setIsAuthenticated(realGmailService.isAuthenticated());
+    // Load script URL from localStorage if available
+    const savedUrl = localStorage.getItem('google_apps_script_url');
+    if (savedUrl) {
+      setScriptUrl(savedUrl);
+    }
   }, []);
 
-  const handleFetchEmails = async () => {
-    if (!isAuthenticated) {
+  const handleTestConnection = async () => {
+    if (!scriptUrl.trim()) {
       toast({
-        title: "Authentication Required",
-        description: "Please connect your Gmail account first",
+        title: "Script URL Required",
+        description: "Please enter your Google Apps Script URL first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const result = await testGoogleAppsScriptConnection();
+      setConnectionStatus(result.message);
+      
+      toast({
+        title: result.success ? "Connection Successful" : "Connection Failed",
+        description: result.message,
+        variant: result.success ? "default" : "destructive"
+      });
+    } catch (error) {
+      toast({
+        title: "Connection Error",
+        description: "Failed to test connection. Check your script URL.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSaveSettings = () => {
+    if (scriptUrl.trim()) {
+      localStorage.setItem('google_apps_script_url', scriptUrl.trim());
+      toast({
+        title: "Settings Saved",
+        description: "Google Apps Script URL has been saved",
+      });
+    }
+    setShowSettings(false);
+  };
+
+  const handleFetchEmails = async () => {
+    if (!scriptUrl.trim()) {
+      setShowSettings(true);
+      toast({
+        title: "Setup Required",
+        description: "Please configure your Google Apps Script URL first",
         variant: "destructive"
       });
       return;
@@ -40,18 +85,27 @@ export function EmailInboxReal() {
 
     setIsLoading(true);
     try {
-      console.log('Fetching emails from Gmail...');
-      const fetchedEmails = await realGmailService.fetchUnreadEmails(50);
+      console.log('Fetching emails from Google Apps Script...');
+      const fetchedEmails = await fetchUnreadEmails(50);
       
-      setEmails(fetchedEmails);
-      setFilteredEmails(fetchedEmails);
+      // Enhanced email processing with quote detection
+      const processedEmails = fetchedEmails.map(email => ({
+        ...email,
+        isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject),
+        confidence: 'medium' as const,
+        processingStatus: 'pending' as const,
+        category: 'general' as const
+      }));
+      
+      setEmails(processedEmails);
+      setFilteredEmails(processedEmails);
       
       toast({
         title: "Emails Fetched",
-        description: `Successfully fetched ${fetchedEmails.length} unread emails`,
+        description: `Successfully fetched ${processedEmails.length} unread emails`,
       });
 
-      console.log(`Fetched ${fetchedEmails.length} emails:`, fetchedEmails);
+      console.log(`Fetched ${processedEmails.length} emails:`, processedEmails);
     } catch (error) {
       console.error('Error fetching emails:', error);
       toast({
@@ -59,14 +113,20 @@ export function EmailInboxReal() {
         description: error instanceof Error ? error.message : "Failed to fetch emails",
         variant: "destructive"
       });
-
-      // If authentication expired, update state
-      if (error instanceof Error && error.message.includes('authentication')) {
-        setIsAuthenticated(false);
-      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const detectQuoteRequest = (text: string): boolean => {
+    const keywords = [
+      'quote', 'quotation', 'pricing', 'price', 'cost', 'estimate',
+      'how much', 'inquiry', 'enquiry', 'interested in', 'purchase',
+      'buy', 'order', 'supply', 'provide', 'need', 'require'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    return keywords.some(keyword => lowerText.includes(keyword));
   };
 
   const filterEmails = (type: 'all' | 'quote' | 'non-quote') => {
@@ -118,7 +178,7 @@ export function EmailInboxReal() {
 
   const handleMarkAsRead = async (email: EmailMessage) => {
     try {
-      const success = await realGmailService.markAsRead(email.id);
+      const success = await markEmailAsRead(email.id);
       if (success) {
         toast({
           title: "Email Marked as Read",
@@ -132,7 +192,7 @@ export function EmailInboxReal() {
       } else {
         toast({
           title: "Failed to Mark as Read",
-          description: "Could not mark email as read in Gmail",
+          description: "Could not mark email as read. Check your Apps Script connection.",
           variant: "destructive"
         });
       }
@@ -171,11 +231,6 @@ export function EmailInboxReal() {
     }
   };
 
-  // Show Gmail authentication if not connected
-  if (!isAuthenticated) {
-    return <GmailAuth />;
-  }
-
   return (
     <>
       <Card className="w-full">
@@ -184,11 +239,19 @@ export function EmailInboxReal() {
             <div className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-blue-600" />
               <div>
-                <CardTitle>Gmail Inbox</CardTitle>
-                <CardDescription>Fetch and process your unread emails from Gmail</CardDescription>
+                <CardTitle>Gmail Inbox via Apps Script</CardTitle>
+                <CardDescription>Fetch and process your unread emails using Google Apps Script</CardDescription>
               </div>
             </div>
             <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
               <Button 
                 onClick={handleFetchEmails}
                 disabled={isLoading}
@@ -204,12 +267,26 @@ export function EmailInboxReal() {
         
         <CardContent>
           {/* Connection Status */}
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm text-green-800">Connected to Gmail - Ready to fetch emails</span>
+          {scriptUrl && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-sm text-green-800">Apps Script URL configured - Ready to fetch emails</span>
+              </div>
+              {connectionStatus && (
+                <div className="text-xs text-green-600 mt-1">{connectionStatus}</div>
+              )}
             </div>
-          </div>
+          )}
+
+          {!scriptUrl && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-amber-600" />
+                <span className="text-sm text-amber-800">Google Apps Script not configured - Click Settings to setup</span>
+              </div>
+            </div>
+          )}
 
           {/* Filter Controls */}
           {emails.length > 0 && (
@@ -302,7 +379,7 @@ export function EmailInboxReal() {
                     
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className="text-xs">
-                        Gmail ID: {email.id.substring(0, 8)}...
+                        ID: {email.id.substring(0, 8)}...
                       </Badge>
                       <div className="flex gap-2">
                         <Button
@@ -341,6 +418,56 @@ export function EmailInboxReal() {
           )}
         </CardContent>
       </Card>
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Google Apps Script Configuration</DialogTitle>
+            <DialogDescription>
+              Enter your Google Apps Script URL to connect Gmail integration
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="scriptUrl">Apps Script URL</Label>
+              <Input
+                id="scriptUrl"
+                value={scriptUrl}
+                onChange={(e) => setScriptUrl(e.target.value)}
+                placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
+              />
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Setup Instructions:</h4>
+              <ol className="text-sm text-blue-800 list-decimal list-inside space-y-1">
+                <li>Go to script.google.com and create a new project</li>
+                <li>Paste the provided Apps Script code</li>
+                <li>Deploy as a web app with "Execute as: Me"</li>
+                <li>Set access to "Anyone"</li>
+                <li>Copy the web app URL and paste it above</li>
+              </ol>
+            </div>
+            
+            {scriptUrl && (
+              <Button onClick={handleTestConnection} variant="outline" className="w-full">
+                Test Connection
+              </Button>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSettings(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveSettings}>
+              Save Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Classification Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
