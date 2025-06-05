@@ -1,4 +1,5 @@
 
+
 /**
  * FINAL Google Apps Script - Simple Email Fetcher with CORS Support
  * This fetches ALL unread emails without any configuration
@@ -18,14 +19,14 @@ function doGet(e) {
       return testConnection();
     }
     
-    return createCorsResponse({
+    return createResponse({
       success: true,
       message: 'Gmail Integration Active',
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    return createCorsResponse({
+    return createResponse({
       success: false,
       error: error.toString()
     });
@@ -45,32 +46,24 @@ function doPost(e) {
       return testConnection();
     }
     
-    return createCorsResponse({
+    return createResponse({
       success: true,
       message: 'Gmail Integration Active',
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    return createCorsResponse({
+    return createResponse({
       success: false,
       error: error.toString()
     });
   }
 }
 
-function createCorsResponse(data) {
+function createResponse(data) {
+  // Simple JSON response - CORS is handled by deployment settings
   const output = ContentService.createTextOutput(JSON.stringify(data));
   output.setMimeType(ContentService.MimeType.JSON);
-  
-  // Add CORS headers
-  output.setHeaders({
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400'
-  });
-  
   return output;
 }
 
@@ -120,7 +113,7 @@ function getAllUnreadEmails() {
       }
     }
     
-    return createCorsResponse({
+    return createResponse({
       success: true,
       emails: emails,
       timestamp: new Date().toISOString(),
@@ -128,7 +121,7 @@ function getAllUnreadEmails() {
     });
     
   } catch (error) {
-    return createCorsResponse({
+    return createResponse({
       success: false,
       error: 'Failed to fetch emails: ' + error.toString(),
       emails: []
@@ -150,7 +143,7 @@ function testConnection() {
       }
     }
     
-    return createCorsResponse({
+    return createResponse({
       success: true,
       message: 'Connection successful',
       emailCount: unreadCount,
@@ -158,9 +151,10 @@ function testConnection() {
     });
     
   } catch (error) {
-    return createCorsResponse({
+    return createResponse({
       success: false,
       error: 'Connection test failed: ' + error.toString()
     });
   }
 }
+
