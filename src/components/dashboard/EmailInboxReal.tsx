@@ -1,19 +1,62 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, Edit } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle, Loader2 } from "lucide-react";
 import { EmailMessage } from "@/types";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState('');
+
+  // Create user-specific storage keys
+  const getUserStorageKey = (key: string) => {
+    return user ? `${key}_${user.id}` : key;
+  };
+
+  // Load persisted data on component mount
+  useEffect(() => {
+    if (user) {
+      // Load script URL for this user
+      const savedScriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
+      if (savedScriptUrl) {
+        setScriptUrl(savedScriptUrl);
+      }
+
+      // Load emails for this user
+      const savedEmails = localStorage.getItem(getUserStorageKey('gmail_emails'));
+      if (savedEmails) {
+        try {
+          const parsedEmails = JSON.parse(savedEmails);
+          setEmails(parsedEmails);
+        } catch (error) {
+          console.error('Error parsing saved emails:', error);
+        }
+      }
+    }
+  }, [user]);
+
+  // Save script URL whenever it changes
+  useEffect(() => {
+    if (user && scriptUrl) {
+      localStorage.setItem(getUserStorageKey('gmail_script_url'), scriptUrl);
+    }
+  }, [scriptUrl, user]);
+
+  // Save emails whenever they change
+  useEffect(() => {
+    if (user && emails.length > 0) {
+      localStorage.setItem(getUserStorageKey('gmail_emails'), JSON.stringify(emails));
+    }
+  }, [emails, user]);
 
   const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
@@ -26,13 +69,30 @@ export function EmailInboxReal() {
     }
 
     setIsLoading(true);
+    setLoadingProgress('Connecting to Google Apps Script...');
     
     try {
-      const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`);
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      setLoadingProgress('Fetching unread emails...');
+      
+      const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status}`);
       }
+      
+      setLoadingProgress('Processing email data...');
       
       const data = await response.json();
       
@@ -41,6 +101,8 @@ export function EmailInboxReal() {
       }
       
       const fetchedEmails = data.emails || [];
+      
+      setLoadingProgress('Analyzing emails for quote requests...');
       
       // Process emails with quote detection
       const processedEmails = fetchedEmails.map((email: any) => ({
@@ -54,20 +116,29 @@ export function EmailInboxReal() {
       setEmails(processedEmails);
       
       toast({
-        title: "Emails Fetched",
-        description: `Successfully fetched ${processedEmails.length} unread emails`,
+        title: "Success!",
+        description: `Fetched ${processedEmails.length} unread emails in ${Math.round(performance.now() / 1000)}s`,
       });
 
     } catch (error) {
       console.error('Error fetching emails:', error);
       
-      toast({
-        title: "Fetch Failed",
-        description: error instanceof Error ? error.message : "Failed to fetch emails",
-        variant: "destructive"
-      });
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast({
+          title: "Request Timeout",
+          description: "Email fetch took too long. Try again or check your Apps Script URL.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Fetch Failed",
+          description: error instanceof Error ? error.message : "Failed to fetch emails",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsLoading(false);
+      setLoadingProgress('');
     }
   };
 
@@ -105,6 +176,19 @@ export function EmailInboxReal() {
     setEmails(remainingEmails);
   };
 
+  const clearAllData = () => {
+    if (user) {
+      localStorage.removeItem(getUserStorageKey('gmail_script_url'));
+      localStorage.removeItem(getUserStorageKey('gmail_emails'));
+      setScriptUrl('');
+      setEmails([]);
+      toast({
+        title: "Data Cleared",
+        description: "Script URL and emails have been cleared",
+      });
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -128,15 +212,46 @@ export function EmailInboxReal() {
                 onChange={(e) => setScriptUrl(e.target.value)}
                 placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
                 className="flex-1"
+                disabled={isLoading}
               />
               <Button 
                 onClick={handleSubmit}
                 disabled={isLoading || !scriptUrl.trim()}
+                className="min-w-[120px]"
               >
-                {isLoading ? 'Fetching...' : 'Fetch Emails'}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  'Fetch Emails'
+                )}
               </Button>
             </div>
+            {isLoading && loadingProgress && (
+              <div className="mt-2 text-sm text-blue-600 flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {loadingProgress}
+              </div>
+            )}
           </div>
+          
+          {scriptUrl && !isLoading && (
+            <div className="flex gap-2">
+              <Badge variant="secondary" className="bg-green-50 text-green-700">
+                Apps Script URL Configured
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllData}
+                className="text-red-600 hover:text-red-700"
+              >
+                Clear Data
+              </Button>
+            </div>
+          )}
         </div>
 
         {emails.length === 0 && !isLoading ? (
@@ -147,9 +262,13 @@ export function EmailInboxReal() {
           </div>
         ) : isLoading ? (
           <div className="text-center py-12 text-slate-500">
-            <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-pulse" />
-            <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
-            <p className="text-sm">Loading your unread messages</p>
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
+              <div>
+                <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
+                <p className="text-sm">{loadingProgress || 'Loading your unread messages'}</p>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
