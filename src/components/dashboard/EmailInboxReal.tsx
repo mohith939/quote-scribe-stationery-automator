@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,15 +6,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, RefreshCw } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle, RefreshCw, Eye } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { fetchUnreadEmails } from "@/services/gmailService";
+import { EmailViewDialog } from "./EmailViewDialog";
+import { mockProducts } from "@/data/mockData";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Load saved script URL on component mount
   useEffect(() => {
@@ -29,6 +34,52 @@ export function EmailInboxReal() {
       localStorage.setItem('google_apps_script_url', scriptUrl);
     }
   }, [scriptUrl]);
+
+  // Enhanced product detection function
+  const enhanceProductDetection = (email: EmailMessage): EmailMessage => {
+    const emailText = (email.body + ' ' + email.subject).toLowerCase();
+    const detectedProducts = [];
+
+    // Check each product in the catalog
+    for (const product of mockProducts) {
+      const productName = product.name.toLowerCase();
+      const productCode = product.product_code.toLowerCase();
+      const brand = product.brand?.toLowerCase() || '';
+      
+      // Check for exact matches or close matches
+      if (emailText.includes(productName) || 
+          emailText.includes(productCode) ||
+          (brand && emailText.includes(brand))) {
+        
+        // Try to extract quantity
+        const quantityRegex = /(\d+)\s*(?:pieces?|pcs?|units?|nos?|\s|$)/gi;
+        const matches = emailText.match(quantityRegex);
+        let quantity = 1;
+        
+        if (matches && matches.length > 0) {
+          const nums = matches.map(m => parseInt(m.match(/\d+/)?.[0] || '1'));
+          quantity = Math.max(...nums);
+        }
+
+        detectedProducts.push({
+          product: product.name, // Use full product name instead of ID
+          quantity: quantity,
+          confidence: 'medium' as const,
+          productCode: product.product_code,
+          brand: product.brand
+        });
+      }
+    }
+
+    return {
+      ...email,
+      detectedProducts,
+      isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject) || detectedProducts.length > 0,
+      confidence: detectedProducts.length > 0 ? 'medium' as const : 'low' as const,
+      processingStatus: 'pending' as const,
+      category: 'general' as const
+    };
+  };
 
   const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
@@ -49,14 +100,10 @@ export function EmailInboxReal() {
       console.log('Fetching emails from Gmail...');
       const fetchedEmails = await fetchUnreadEmails(20, true); // Force refresh, get up to 20 emails
       
-      // Process emails with quote detection
-      const processedEmails = fetchedEmails.map((email: EmailMessage) => ({
-        ...email,
-        isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject),
-        confidence: 'medium' as const,
-        processingStatus: 'pending' as const,
-        category: 'general' as const
-      }));
+      // Process emails with enhanced product detection
+      const processedEmails = fetchedEmails.map((email: EmailMessage) => 
+        enhanceProductDetection(email)
+      );
       
       setEmails(processedEmails);
       
@@ -129,6 +176,11 @@ export function EmailInboxReal() {
         variant: "destructive"
       });
     }
+  };
+
+  const handleViewFullEmail = (email: EmailMessage) => {
+    setSelectedEmail(email);
+    setIsDialogOpen(true);
   };
 
   return (
@@ -223,12 +275,33 @@ export function EmailInboxReal() {
                   <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
                     <p>{email.body?.substring(0, 150)}...</p>
                   </div>
+
+                  {/* Show detected products */}
+                  {email.detectedProducts && email.detectedProducts.length > 0 && (
+                    <div className="mb-2">
+                      <div className="flex flex-wrap gap-1">
+                        {email.detectedProducts.map((product, index) => (
+                          <Badge key={index} variant="outline" className="text-xs bg-yellow-50 text-yellow-700">
+                            {product.product} (Qty: {product.quantity})
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className="text-xs">
                       ID: {email.id.substring(0, 8)}...
                     </Badge>
                     <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewFullEmail(email)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View Full Email
+                      </Button>
                       {email.isQuoteRequest ? (
                         <Button
                           size="sm"
@@ -254,6 +327,12 @@ export function EmailInboxReal() {
             </div>
           </div>
         )}
+
+        <EmailViewDialog 
+          email={selectedEmail}
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+        />
       </CardContent>
     </Card>
   );
