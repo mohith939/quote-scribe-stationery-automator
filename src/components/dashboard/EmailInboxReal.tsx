@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, Refresh } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle, RefreshCw } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { fetchUnreadEmails } from "@/services/gmailService";
 
@@ -168,7 +167,7 @@ export function EmailInboxReal() {
                   onClick={handleRefresh}
                   disabled={isLoading}
                 >
-                  <Refresh className="h-4 w-4" />
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
               )}
             </div>
