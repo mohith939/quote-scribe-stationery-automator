@@ -1,6 +1,6 @@
 
 import { TabsContent } from "@/components/ui/tabs";
-import { GmailSettings } from "@/components/dashboard/GmailSettings";
+import { EmailInboxReal } from "@/components/dashboard/EmailInboxReal";
 import { ProcessingQueue } from "@/components/dashboard/ProcessingQueue";
 import { QuoteTemplates } from "@/components/dashboard/QuoteTemplates";
 import { QuoteHistory } from "@/components/dashboard/QuoteHistory";
@@ -18,7 +18,7 @@ const Index = () => {
   return (
     <MainLayout activeTab={activeTab} onTabChange={handleTabChange}>
       <TabsContent value="email-inbox" className="mt-0">
-        <GmailSettings />
+        <EmailInboxReal />
       </TabsContent>
       <TabsContent value="processing-queue" className="mt-0">
         <ProcessingQueue />
