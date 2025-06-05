@@ -1,19 +1,35 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, Edit } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle, Refresh } from "lucide-react";
 import { EmailMessage } from "@/types";
+import { fetchUnreadEmails } from "@/services/gmailService";
 
 export function EmailInboxReal() {
   const { toast } = useToast();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Load saved script URL on component mount
+  useEffect(() => {
+    const savedUrl = localStorage.getItem('google_apps_script_url');
+    if (savedUrl) {
+      setScriptUrl(savedUrl);
+    }
+  }, []);
+
+  // Save script URL to localStorage whenever it changes
+  useEffect(() => {
+    if (scriptUrl.trim()) {
+      localStorage.setItem('google_apps_script_url', scriptUrl);
+    }
+  }, [scriptUrl]);
 
   const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
@@ -28,22 +44,14 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`);
+      // Store the script URL for the gmailService to use
+      localStorage.setItem('google_apps_script_url', scriptUrl);
       
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      const fetchedEmails = data.emails || [];
+      console.log('Fetching emails from Gmail...');
+      const fetchedEmails = await fetchUnreadEmails(20, true); // Force refresh, get up to 20 emails
       
       // Process emails with quote detection
-      const processedEmails = fetchedEmails.map((email: any) => ({
+      const processedEmails = fetchedEmails.map((email: EmailMessage) => ({
         ...email,
         isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject),
         confidence: 'medium' as const,
@@ -54,16 +62,23 @@ export function EmailInboxReal() {
       setEmails(processedEmails);
       
       toast({
-        title: "Emails Fetched",
-        description: `Successfully fetched ${processedEmails.length} unread emails`,
+        title: "Emails Fetched Successfully",
+        description: `Found ${processedEmails.length} unread emails`,
       });
+
+      console.log(`Successfully fetched ${processedEmails.length} emails`);
 
     } catch (error) {
       console.error('Error fetching emails:', error);
       
+      let errorMessage = "Failed to fetch emails";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Fetch Failed",
-        description: error instanceof Error ? error.message : "Failed to fetch emails",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -105,6 +120,18 @@ export function EmailInboxReal() {
     setEmails(remainingEmails);
   };
 
+  const handleRefresh = () => {
+    if (scriptUrl.trim()) {
+      handleSubmit();
+    } else {
+      toast({
+        title: "URL Required",
+        description: "Please enter your Google Apps Script URL first",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -112,7 +139,7 @@ export function EmailInboxReal() {
           <Mail className="h-5 w-5 text-blue-600" />
           <div>
             <CardTitle>Email Inbox</CardTitle>
-            <CardDescription>Enter your Google Apps Script URL to fetch emails</CardDescription>
+            <CardDescription>Connect to Gmail via Google Apps Script</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -135,6 +162,15 @@ export function EmailInboxReal() {
               >
                 {isLoading ? 'Fetching...' : 'Fetch Emails'}
               </Button>
+              {emails.length > 0 && (
+                <Button 
+                  variant="outline"
+                  onClick={handleRefresh}
+                  disabled={isLoading}
+                >
+                  <Refresh className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -149,7 +185,7 @@ export function EmailInboxReal() {
           <div className="text-center py-12 text-slate-500">
             <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-pulse" />
             <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
-            <p className="text-sm">Loading your unread messages</p>
+            <p className="text-sm">Loading your unread messages from Gmail</p>
           </div>
         ) : (
           <div className="space-y-4">
