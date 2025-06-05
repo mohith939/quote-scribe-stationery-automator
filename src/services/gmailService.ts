@@ -250,8 +250,9 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
     // Increment quota counter
     incrementApiCall();
     
-    // Add maxEmails parameter to limit the fetch
-    const fullUrl = `${scriptUrl}?action=getAllUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`;
+    // IMPORTANT: Changed action parameter from 'getAllUnreadEmails' to 'fetchUnreadEmails'
+    // to match what's expected in the Google Apps Script
+    const fullUrl = `${scriptUrl}?action=fetchUnreadEmails&maxResults=${maxEmails}&_=${Date.now()}`;
     console.log('Fetching from URL:', fullUrl);
     
     const response = await fetch(fullUrl, {
@@ -292,24 +293,23 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
     
     console.log('Parsed response:', data);
     
-    if (!data.success) {
-      // Handle quota exceeded error specifically
-      if (data.error && data.error.includes('Service invoked too many times')) {
-        throw new Error('Gmail quota exceeded for today. Try again tomorrow or reduce email fetch limit.');
-      }
-      throw new Error(data.error || 'Failed to fetch emails from Apps Script');
+    // Changed to handle the expected response format from the Google Apps Script
+    // The script.js example returns { emails: [...] } directly
+    const emails = data.emails || [];
+    if (!emails || !Array.isArray(emails)) {
+      throw new Error('Invalid response format from Apps Script. Expected an "emails" array.');
     }
     
     // Map emails to our interface with enhanced processing
-    const emails = (data.emails || []).map((email: any) => ({
+    const processedEmails = emails.map((email: any) => ({
       id: email.id,
       from: email.from,
-      to: email.to,
+      to: email.to || '',
       subject: email.subject,
       body: email.body,
       date: email.date,
       threadId: email.threadId,
-      snippet: email.snippet,
+      snippet: email.snippet || '',
       attachments: email.attachments || [],
       hasAttachments: email.hasAttachments || false,
       htmlBody: email.htmlBody || '',
@@ -324,10 +324,10 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
     }));
 
     // Cache the results
-    setCachedEmails(emails);
+    setCachedEmails(processedEmails);
 
-    console.log(`Successfully fetched ${emails.length} emails`);
-    return emails;
+    console.log(`Successfully fetched ${processedEmails.length} emails`);
+    return processedEmails;
     
   } catch (error) {
     console.error("Email fetch error:", error);
