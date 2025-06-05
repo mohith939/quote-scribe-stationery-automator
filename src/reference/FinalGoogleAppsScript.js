@@ -1,6 +1,6 @@
 
 /**
- * FINAL Google Apps Script - Simple Email Fetcher
+ * FINAL Google Apps Script - Simple Email Fetcher with CORS Support
  * This fetches ALL unread emails without any configuration
  * Deploy as web app with "Execute as: Me" and "Access: Anyone"
  */
@@ -18,18 +18,60 @@ function doGet(e) {
       return testConnection();
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: true,
       message: 'Gmail Integration Active',
       timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
     
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: false,
       error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
+}
+
+function doPost(e) {
+  try {
+    const params = e && e.parameter ? e.parameter : {};
+    const action = params.action || 'getAllUnreadEmails';
+    
+    if (action === 'getAllUnreadEmails' || action === 'fetchUnreadEmails') {
+      return getAllUnreadEmails();
+    }
+    
+    if (action === 'testConnection') {
+      return testConnection();
+    }
+    
+    return createCorsResponse({
+      success: true,
+      message: 'Gmail Integration Active',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    return createCorsResponse({
+      success: false,
+      error: error.toString()
+    });
+  }
+}
+
+function createCorsResponse(data) {
+  const output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  
+  // Add CORS headers
+  output.setHeaders({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400'
+  });
+  
+  return output;
 }
 
 function getAllUnreadEmails() {
@@ -78,19 +120,19 @@ function getAllUnreadEmails() {
       }
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: true,
       emails: emails,
       timestamp: new Date().toISOString(),
       totalCount: emails.length
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
     
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: false,
       error: 'Failed to fetch emails: ' + error.toString(),
       emails: []
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
 
@@ -108,17 +150,17 @@ function testConnection() {
       }
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: true,
       message: 'Connection successful',
       emailCount: unreadCount,
       timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
     
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCorsResponse({
       success: false,
       error: 'Connection test failed: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
