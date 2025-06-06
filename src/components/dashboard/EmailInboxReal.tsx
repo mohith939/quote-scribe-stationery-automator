@@ -6,16 +6,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle } from "lucide-react";
+import { Mail, User, Clock, Send } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { EmailRefreshButton } from "./EmailRefreshButton";
+import { EmailClassificationBadge } from "./EmailClassificationBadge";
+import { classifyEmail, getDisplayText, EmailClassification } from "@/services/emailClassificationService";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+interface EnhancedEmailMessage extends EmailMessage {
+  classification: EmailClassification;
+}
 
 export function EmailInboxReal() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [emails, setEmails] = useState<EmailMessage[]>([]);
+  const [emails, setEmails] = useState<EnhancedEmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
+
+  // Fetch products for classification
+  const { data: products = [] } = useQuery({
+    queryKey: ['products', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('user_products')
+        .select('*')
+        .eq('user_id', user.id)
+        .limit(1000);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user
+  });
 
   // Create user-specific storage keys
   const getUserStorageKey = (key: string) => {
@@ -25,40 +52,47 @@ export function EmailInboxReal() {
   // Load persisted data on component mount
   useEffect(() => {
     if (user) {
-      // Load script URL for this user
       const savedScriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
       if (savedScriptUrl) {
         setScriptUrl(savedScriptUrl);
       }
 
-      // Load emails for this user
       const savedEmails = localStorage.getItem(getUserStorageKey('gmail_emails'));
       if (savedEmails) {
         try {
           const parsedEmails = JSON.parse(savedEmails);
-          setEmails(parsedEmails);
+          // Re-classify emails with current products
+          const enhancedEmails = parsedEmails.map((email: EmailMessage) => ({
+            ...email,
+            classification: classifyEmail(email, products)
+          }));
+          setEmails(enhancedEmails);
         } catch (error) {
           console.error('Error parsing saved emails:', error);
         }
       }
-    }
-  }, [user]);
 
-  // Save script URL whenever it changes
+      const savedLastFetch = localStorage.getItem(getUserStorageKey('last_fetch_time'));
+      if (savedLastFetch) {
+        setLastFetchTime(new Date(savedLastFetch));
+      }
+    }
+  }, [user, products]);
+
+  // Save data whenever it changes
   useEffect(() => {
     if (user && scriptUrl) {
       localStorage.setItem(getUserStorageKey('gmail_script_url'), scriptUrl);
     }
   }, [scriptUrl, user]);
 
-  // Save emails whenever they change
   useEffect(() => {
     if (user && emails.length > 0) {
       localStorage.setItem(getUserStorageKey('gmail_emails'), JSON.stringify(emails));
     }
   }, [emails, user]);
 
-  const handleSubmit = async () => {
+  const fetchEmails = async (incremental = false) => {
     if (!scriptUrl.trim()) {
       toast({
         title: "URL Required",
@@ -71,7 +105,15 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`);
+      let url = `${scriptUrl}?action=getAllUnreadEmails&_=${Date.now()}`;
+      
+      // For incremental fetch, add timestamp parameter
+      if (incremental && lastFetchTime) {
+        const timestamp = lastFetchTime.toISOString();
+        url += `&since=${encodeURIComponent(timestamp)}`;
+      }
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status}`);
@@ -85,21 +127,36 @@ export function EmailInboxReal() {
       
       const fetchedEmails = data.emails || [];
       
-      // Process emails with quote detection
-      const processedEmails = fetchedEmails.map((email: any) => ({
+      // Classify and enhance emails
+      const enhancedEmails: EnhancedEmailMessage[] = fetchedEmails.map((email: EmailMessage) => ({
         ...email,
-        isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject),
-        confidence: 'medium' as const,
-        processingStatus: 'pending' as const,
-        category: 'general' as const
+        classification: classifyEmail(email, products)
       }));
       
-      setEmails(processedEmails);
-      
-      toast({
-        title: "Emails Fetched",
-        description: `Successfully fetched ${processedEmails.length} unread emails`,
-      });
+      if (incremental) {
+        // For incremental updates, merge with existing emails
+        setEmails(prevEmails => {
+          const existingIds = new Set(prevEmails.map(e => e.id));
+          const newEmails = enhancedEmails.filter(e => !existingIds.has(e.id));
+          return [...newEmails, ...prevEmails];
+        });
+        
+        toast({
+          title: "Latest Emails Fetched",
+          description: `Found ${enhancedEmails.length} new emails`,
+        });
+      } else {
+        // Full refresh
+        setEmails(enhancedEmails);
+        
+        toast({
+          title: "Emails Fetched",
+          description: `Successfully fetched ${enhancedEmails.length} emails`,
+        });
+      }
+
+      setLastFetchTime(new Date());
+      localStorage.setItem(getUserStorageKey('last_fetch_time'), new Date().toISOString());
 
     } catch (error) {
       console.error('Error fetching emails:', error);
@@ -114,15 +171,29 @@ export function EmailInboxReal() {
     }
   };
 
-  const detectQuoteRequest = (text: string): boolean => {
-    const keywords = [
-      'quote', 'quotation', 'pricing', 'price', 'cost', 'estimate',
-      'how much', 'inquiry', 'enquiry', 'interested in', 'purchase',
-      'buy', 'order', 'supply', 'provide', 'need', 'require'
-    ];
-    
-    const lowerText = text.toLowerCase();
-    return keywords.some(keyword => lowerText.includes(keyword));
+  const handleReclassify = (emailId: string, isQuoteRequest: boolean) => {
+    setEmails(prevEmails => 
+      prevEmails.map(email => {
+        if (email.id === emailId) {
+          const updatedClassification = {
+            ...email.classification,
+            isQuoteRequest,
+            confidence: 'high' as const,
+            reasoning: 'Manually classified by user'
+          };
+          return {
+            ...email,
+            classification: updatedClassification
+          };
+        }
+        return email;
+      })
+    );
+
+    toast({
+      title: "Email Reclassified",
+      description: `Email marked as ${isQuoteRequest ? 'quote request' : 'general email'}`,
+    });
   };
 
   const formatDate = (dateString: string) => {
@@ -138,7 +209,7 @@ export function EmailInboxReal() {
     return match ? match[1].trim().replace(/['"]/g, '') : fromField;
   };
 
-  const handleProcessQuote = (email: EmailMessage) => {
+  const handleProcessQuote = (email: EnhancedEmailMessage) => {
     toast({
       title: "Email Added to Processing Queue",
       description: `Email from ${extractSenderName(email.from)} moved to processing queue`,
@@ -152,24 +223,37 @@ export function EmailInboxReal() {
     if (user) {
       localStorage.removeItem(getUserStorageKey('gmail_script_url'));
       localStorage.removeItem(getUserStorageKey('gmail_emails'));
+      localStorage.removeItem(getUserStorageKey('last_fetch_time'));
       setScriptUrl('');
       setEmails([]);
+      setLastFetchTime(null);
       toast({
         title: "Data Cleared",
-        description: "Script URL and emails have been cleared",
+        description: "All data has been cleared",
       });
     }
   };
 
+  // Separate emails by classification
+  const quoteEmails = emails.filter(email => email.classification.isQuoteRequest);
+  const generalEmails = emails.filter(email => !email.classification.isQuoteRequest);
+
   return (
     <Card className="w-full">
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <Mail className="h-5 w-5 text-blue-600" />
-          <div>
-            <CardTitle>Email Inbox</CardTitle>
-            <CardDescription>Enter your Google Apps Script URL to fetch emails</CardDescription>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-blue-600" />
+            <div>
+              <CardTitle>Email Inbox</CardTitle>
+              <CardDescription>Manage your emails with automatic classification</CardDescription>
+            </div>
           </div>
+          <EmailRefreshButton 
+            onRefresh={fetchEmails}
+            isLoading={isLoading}
+            disabled={!scriptUrl.trim()}
+          />
         </div>
       </CardHeader>
       
@@ -186,10 +270,10 @@ export function EmailInboxReal() {
                 className="flex-1"
               />
               <Button 
-                onClick={handleSubmit}
+                onClick={() => fetchEmails(false)}
                 disabled={isLoading || !scriptUrl.trim()}
               >
-                {isLoading ? 'Fetching...' : 'Fetch Emails'}
+                {isLoading ? 'Fetching...' : 'Fetch All'}
               </Button>
             </div>
           </div>
@@ -215,58 +299,67 @@ export function EmailInboxReal() {
           <div className="text-center py-12 text-slate-500">
             <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium mb-2">No emails loaded</h3>
-            <p className="text-sm">Enter your Apps Script URL and click "Fetch Emails" to load your unread Gmail messages</p>
+            <p className="text-sm">Enter your Apps Script URL and click "Fetch All" to load your emails</p>
           </div>
         ) : isLoading ? (
           <div className="text-center py-12 text-slate-500">
             <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-pulse" />
             <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
-            <p className="text-sm">Loading your unread messages</p>
+            <p className="text-sm">Loading your messages</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
+          <div className="space-y-6">
+            {/* Summary */}
+            <div className="flex items-center gap-4">
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                {emails.length} Email{emails.length !== 1 ? 's' : ''} Found
+                Total: {emails.length}
+              </Badge>
+              <Badge className="bg-green-100 text-green-800">
+                Quote Requests: {quoteEmails.length}
+              </Badge>
+              <Badge variant="outline">
+                General: {generalEmails.length}
               </Badge>
             </div>
-            
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {emails.map((email) => (
-                <div key={email.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <User className="h-4 w-4 text-slate-400" />
-                        <span className="font-medium text-slate-900 truncate">
-                          {extractSenderName(email.from)}
-                        </span>
-                        {email.isQuoteRequest ? (
-                          <Badge className="bg-green-100 text-green-800">Quote Request</Badge>
-                        ) : (
-                          <Badge variant="outline">General Email</Badge>
-                        )}
+
+            {/* Quote Requests Section */}
+            {quoteEmails.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-green-700">Quote Requests</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {quoteEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 bg-green-50 hover:bg-green-100 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
+                            <EmailClassificationBadge
+                              classification={email.classification}
+                              onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
+                              emailId={email.id}
+                            />
+                          </div>
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm font-medium text-green-700">
+                            {getDisplayText(email, email.classification)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
+                          {formatDate(email.date)}
+                        </div>
                       </div>
-                      <h3 className="font-semibold text-slate-900 mb-1">
-                        {email.subject}
-                      </h3>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
-                      <Clock className="h-4 w-4" />
-                      {formatDate(email.date)}
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
-                    <p>{email.body?.substring(0, 150)}...</p>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="text-xs">
-                      ID: {email.id.substring(0, 8)}...
-                    </Badge>
-                    <div className="flex gap-2">
-                      {email.isQuoteRequest ? (
+                      
+                      <div className="text-sm text-slate-600 bg-white p-2 rounded mb-2">
+                        <p>{email.body?.substring(0, 150)}...</p>
+                      </div>
+                      
+                      <div className="flex items-center justify-end">
                         <Button
                           size="sm"
                           onClick={() => handleProcessQuote(email)}
@@ -275,20 +368,54 @@ export function EmailInboxReal() {
                           <Send className="h-4 w-4 mr-1" />
                           Process Quote
                         </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Mark Read
-                        </Button>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* General Emails Section */}
+            {generalEmails.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-slate-700">General Emails</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {generalEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
+                            <EmailClassificationBadge
+                              classification={email.classification}
+                              onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
+                              emailId={email.id}
+                            />
+                          </div>
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm text-slate-600">
+                            {getDisplayText(email, email.classification)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
+                          {formatDate(email.date)}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
+                        <p>{email.body?.substring(0, 150)}...</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
