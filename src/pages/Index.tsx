@@ -15,18 +15,13 @@ const Index = () => {
     setActiveTab(tab);
   };
 
-  const handleSwitchToTemplates = (quoteData: any) => {
-    setActiveTab("quote-templates");
-    // You can pass quoteData to templates if needed
-  };
-
   return (
     <MainLayout activeTab={activeTab} onTabChange={handleTabChange}>
       <TabsContent value="email-inbox" className="mt-0">
         <EmailInboxReal />
       </TabsContent>
       <TabsContent value="processing-queue" className="mt-0">
-        <ProcessingQueue onSwitchToTemplates={handleSwitchToTemplates} />
+        <ProcessingQueue />
       </TabsContent>
       <TabsContent value="quote-templates" className="mt-0">
         <QuoteTemplates />

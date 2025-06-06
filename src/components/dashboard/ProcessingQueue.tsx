@@ -1,11 +1,11 @@
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Edit, User, Package, CheckCircle, Eye } from "lucide-react";
+import { Clock, Edit, Trash2, User, Package, CheckCircle } from "lucide-react";
 import { ProcessingQueueItem } from "@/types";
-import { useToast } from "@/hooks/use-toast";
-import { useProcessingQueue } from "@/hooks/useProcessingQueue";
+import { useToast } from "@/components/ui/use-toast";
 
 interface ProcessingQueueProps {
   onSwitchToTemplates?: (quoteData: any) => void;
@@ -13,9 +13,10 @@ interface ProcessingQueueProps {
 
 export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   const { toast } = useToast();
-  const { queueItems, removeFromQueue, updateQueueItem } = useProcessingQueue();
+  const [queueItems, setQueueItems] = useState<ProcessingQueueItem[]>([]);
 
   const handleEditQuote = (item: ProcessingQueueItem) => {
+    // Prepare quote data for template
     const quoteData = {
       customerName: item.customerInfo.name,
       customerEmail: item.customerInfo.email,
@@ -24,6 +25,7 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       originalEmail: item.email.body
     };
 
+    // Switch to quote templates with prefilled data
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
     }
@@ -34,38 +36,40 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
     });
   };
 
-  const handleSendQuote = (item: ProcessingQueueItem) => {
+  const handleCompleteQuote = (itemId: string) => {
+    setQueueItems(items => 
+      items.map(item => 
+        item.id === itemId 
+          ? { ...item, status: 'completed' as const }
+          : item
+      )
+    );
+
     toast({
-      title: "Quote Sent",
-      description: `Quote sent to ${item.customerInfo.name}`,
+      title: "Quote Completed",
+      description: "Quote has been marked as completed",
     });
-    
-    updateQueueItem(item.id, { status: 'completed' });
   };
 
-  const handleReject = (item: ProcessingQueueItem) => {
-    removeFromQueue(item.id);
+  const handleRemoveItem = (itemId: string) => {
+    setQueueItems(items => items.filter(item => item.id !== itemId));
     
     toast({
-      title: "Item Rejected",
+      title: "Item Removed",
       description: "Item has been removed from processing queue",
     });
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Date(dateString).toLocaleDateString();
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-blue-100 text-blue-800">Quote Request</Badge>;
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pending</Badge>;
+      case 'processing':
+        return <Badge className="bg-blue-100 text-blue-800">Processing</Badge>;
       case 'completed':
         return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
       default:
@@ -76,11 +80,11 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   const getConfidenceBadge = (confidence: string) => {
     switch (confidence) {
       case 'high':
-        return <Badge className="bg-green-100 text-green-800 text-xs">high confidence</Badge>;
+        return <Badge className="bg-green-100 text-green-800">High Confidence</Badge>;
       case 'medium':
-        return <Badge className="bg-yellow-100 text-yellow-800 text-xs">medium confidence</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-800">Medium Confidence</Badge>;
       case 'low':
-        return <Badge className="bg-orange-100 text-orange-800 text-xs">low confidence</Badge>;
+        return <Badge className="bg-orange-100 text-orange-800">Low Confidence</Badge>;
       default:
         return null;
     }
@@ -89,25 +93,13 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   return (
     <Card className="w-full">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Clock className="h-5 w-5 text-blue-600" />
           <div>
-            <CardTitle className="text-2xl font-semibold">Processing Queue</CardTitle>
-            <CardDescription className="text-slate-500">
-              Emails requiring manual review and quote generation
+            <CardTitle>Processing Queue</CardTitle>
+            <CardDescription>
+              Emails ready for quote generation and processing
             </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="bg-slate-100">
-              <span className="mr-2">⚡</span>
-              Auto Generate
-            </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" size="sm">
-              <span className="mr-2">📤</span>
-              Auto Send All
-            </Button>
-            <Button variant="outline" size="sm">
-              🔄 Refresh
-            </Button>
           </div>
         </div>
       </CardHeader>
@@ -123,86 +115,105 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {queueItems.map((item) => (
-              <div key={item.id} className="border rounded-lg p-6 bg-white">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="font-medium text-lg">{item.customerInfo.email}</span>
-                      {getStatusBadge(item.status)}
-                      {item.detectedProducts[0] && getConfidenceBadge(item.detectedProducts[0].confidence)}
+            <div className="flex items-center gap-2 mb-4">
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                {queueItems.length} Item{queueItems.length !== 1 ? 's' : ''} in Queue
+              </Badge>
+            </div>
+            
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {queueItems.map((item) => (
+                <div key={item.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <User className="h-4 w-4 text-slate-400" />
+                        <span className="font-medium text-slate-900">
+                          {item.customerInfo.name}
+                        </span>
+                        <span className="text-slate-500 text-sm">({item.customerInfo.email})</span>
+                        {getStatusBadge(item.status)}
+                      </div>
+                      <h3 className="font-semibold text-slate-900 mb-1">
+                        {item.email.subject}
+                      </h3>
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-900 mb-1">
-                      {item.email.subject}
-                    </h3>
-                    <div className="text-sm text-slate-500">
+                    <div className="text-sm text-slate-500 ml-4">
                       {formatDate(item.dateAdded)}
                     </div>
                   </div>
-                </div>
-                
-                {/* Full Email Content */}
-                <div className="mb-4">
-                  <div className="bg-slate-50 p-4 rounded-lg border">
-                    <div className="text-sm text-slate-700 whitespace-pre-wrap">
-                      {item.email.body}
+                  
+                  {/* Detected Products */}
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="h-4 w-4 text-slate-600" />
+                      <span className="text-sm font-medium text-slate-700">Detected Products:</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {item.detectedProducts.map((product, index) => (
+                        <div key={index} className="bg-slate-50 p-2 rounded flex items-center justify-between">
+                          <div>
+                            <span className="font-medium">{product.product}</span>
+                            {product.productCode && (
+                              <span className="text-slate-500 ml-2">({product.productCode})</span>
+                            )}
+                            {product.brand && (
+                              <span className="text-slate-600 ml-2">- {product.brand}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">Qty: {product.quantity}</Badge>
+                            {getConfidenceBadge(product.confidence)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Email Preview */}
+                  <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-3">
+                    <p>{item.email.snippet || item.email.body?.substring(0, 150) + '...'}</p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      ID: {item.id}
+                    </Badge>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRemoveItem(item.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                      {item.status !== 'completed' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCompleteQuote(item.id)}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Mark Complete
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleEditQuote(item)}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit Quote
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-
-                {/* Detected Products */}
-                {item.detectedProducts.length > 0 && (
-                  <div className="mb-4">
-                    <div className="text-blue-600 font-medium mb-2">
-                      Detected Product: {item.detectedProducts[0].product}
-                    </div>
-                  </div>
-                )}
-
-                {/* AI Detection Notice */}
-                <div className="flex items-center gap-2 mb-4 text-sm text-blue-600">
-                  <span className="text-blue-500">ℹ️</span>
-                  AI detected this as a quote request with {item.detectedProducts[0]?.confidence || 'medium'} confidence
-                </div>
-                
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleReject(item)}
-                    className="text-slate-600 hover:text-slate-700"
-                  >
-                    <span className="mr-1">✕</span>
-                    Reject
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-slate-600 hover:text-slate-700"
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    View
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditQuote(item)}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    <Edit className="h-4 w-4 mr-1" />
-                    Edit Quote
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleSendQuote(item)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <span className="mr-1">📤</span>
-                    Send Quote
-                  </Button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

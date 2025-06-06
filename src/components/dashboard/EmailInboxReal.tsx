@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,13 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, Search, Filter } from "lucide-react";
+import { Mail, User, Clock, Send } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { EmailRefreshButton } from "./EmailRefreshButton";
 import { EmailClassificationBadge } from "./EmailClassificationBadge";
 import { classifyEmail, getDisplayText, EmailClassification } from "@/services/emailClassificationService";
-import { useProcessingQueue } from "@/hooks/useProcessingQueue";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,9 +26,6 @@ export function EmailInboxReal() {
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('All Emails');
-  const { addToQueue } = useProcessingQueue();
 
   // Fetch products for classification
   const { data: products = [] } = useQuery({
@@ -213,16 +210,13 @@ export function EmailInboxReal() {
   };
 
   const handleProcessQuote = (email: EnhancedEmailMessage) => {
-    // Add to processing queue
-    const queueId = addToQueue(email);
-    
-    // Remove from email list
-    setEmails(prevEmails => prevEmails.filter(e => e.id !== email.id));
-    
     toast({
       title: "Email Added to Processing Queue",
       description: `Email from ${extractSenderName(email.from)} moved to processing queue`,
     });
+    
+    const remainingEmails = emails.filter(e => e.id !== email.id);
+    setEmails(remainingEmails);
   };
 
   const clearAllData = () => {
@@ -240,45 +234,26 @@ export function EmailInboxReal() {
     }
   };
 
-  // Filter emails based on search and filter type
-  const filteredEmails = emails.filter(email => {
-    const matchesSearch = searchTerm === '' || 
-      email.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      email.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      email.body?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    if (filterType === 'All Emails') return matchesSearch;
-    // Add more filter logic if needed
-    
-    return matchesSearch;
-  });
-
-  const quoteEmails = filteredEmails.filter(email => email.classification.isQuoteRequest);
-  const generalEmails = filteredEmails.filter(email => !email.classification.isQuoteRequest);
+  // Separate emails by classification
+  const quoteEmails = emails.filter(email => email.classification.isQuoteRequest);
+  const generalEmails = emails.filter(email => !email.classification.isQuoteRequest);
 
   return (
     <Card className="w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl font-semibold">Email Inbox</CardTitle>
-            <CardDescription className="text-slate-500">All received emails requiring response</CardDescription>
-          </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="bg-slate-100">
-              <span className="mr-2">🔄</span>
-              Auto-sync OFF
-            </Button>
-            <Button className="bg-green-600 hover:bg-green-700" size="sm">
-              <span className="mr-2">📤</span>
-              Auto Send All (3)
-            </Button>
-            <EmailRefreshButton 
-              onRefresh={fetchEmails}
-              isLoading={isLoading}
-              disabled={!scriptUrl.trim()}
-            />
+            <Mail className="h-5 w-5 text-blue-600" />
+            <div>
+              <CardTitle>Email Inbox</CardTitle>
+              <CardDescription>Manage your emails with automatic classification</CardDescription>
+            </div>
           </div>
+          <EmailRefreshButton 
+            onRefresh={fetchEmails}
+            isLoading={isLoading}
+            disabled={!scriptUrl.trim()}
+          />
         </div>
       </CardHeader>
       
@@ -298,42 +273,33 @@ export function EmailInboxReal() {
                 onClick={() => fetchEmails(false)}
                 disabled={isLoading || !scriptUrl.trim()}
               >
-                {isLoading ? 'Fetching...' : 'Sync Emails'}
+                {isLoading ? 'Fetching...' : 'Fetch All'}
               </Button>
             </div>
           </div>
-
-          {/* Search and Filter */}
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                placeholder="Search emails..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-slate-400" />
-              <select 
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="border rounded px-3 py-2 text-sm"
+          
+          {scriptUrl && (
+            <div className="flex gap-2">
+              <Badge variant="secondary" className="bg-green-50 text-green-700">
+                Apps Script URL Configured
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllData}
+                className="text-red-600 hover:text-red-700"
               >
-                <option>All Emails</option>
-                <option>Quote Requests</option>
-                <option>General</option>
-              </select>
+                Clear Data
+              </Button>
             </div>
-          </div>
+          )}
         </div>
 
         {emails.length === 0 && !isLoading ? (
           <div className="text-center py-12 text-slate-500">
             <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium mb-2">No emails loaded</h3>
-            <p className="text-sm">Enter your Apps Script URL and click "Sync Emails" to load your emails</p>
+            <p className="text-sm">Enter your Apps Script URL and click "Fetch All" to load your emails</p>
           </div>
         ) : isLoading ? (
           <div className="text-center py-12 text-slate-500">
@@ -343,88 +309,107 @@ export function EmailInboxReal() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Summary */}
+            <div className="flex items-center gap-4">
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                Total: {emails.length}
+              </Badge>
+              <Badge className="bg-green-100 text-green-800">
+                Quote Requests: {quoteEmails.length}
+              </Badge>
+              <Badge variant="outline">
+                General: {generalEmails.length}
+              </Badge>
+            </div>
+
             {/* Quote Requests Section */}
             {quoteEmails.length > 0 && (
               <div>
-                {quoteEmails.map((email) => (
-                  <div key={email.id} className="border rounded-lg p-4 mb-3 bg-white">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="font-medium">{extractSenderName(email.from)}</span>
-                          <EmailClassificationBadge
-                            classification={email.classification}
-                            onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
-                            emailId={email.id}
-                          />
-                          <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-                            {email.classification.confidence} confidence
-                          </Badge>
-                        </div>
-                        <h3 className="font-semibold text-lg mb-1">
-                          {email.subject}
-                        </h3>
-                        <div className="text-sm text-slate-500 mb-3">
-                          {formatDate(email.date)}
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          {email.body?.substring(0, 200)}...
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-blue-600">
-                        ℹ️ AI detected this as a quote request with {email.classification.confidence} confidence
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-slate-600"
-                        >
-                          <Send className="h-4 w-4 mr-1" />
-                          Send Quote
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleProcessQuote(email)}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Send className="h-4 w-4 mr-1" />
-                          Process Manually
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* General Emails Section */}
-            {generalEmails.length > 0 && (
-              <div>
-                <div className="space-y-3">
-                  {generalEmails.slice(0, 5).map((email) => (
-                    <div key={email.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-3 text-green-700">Quote Requests</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {quoteEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 bg-green-50 hover:bg-green-100 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">{extractSenderName(email.from)}</span>
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
                             <EmailClassificationBadge
                               classification={email.classification}
                               onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
                               emailId={email.id}
                             />
                           </div>
-                          <h3 className="font-semibold mb-1">{email.subject}</h3>
-                          <div className="text-sm text-slate-600">
-                            {email.body?.substring(0, 100)}...
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm font-medium text-green-700">
+                            {getDisplayText(email, email.classification)}
                           </div>
                         </div>
-                        <div className="text-sm text-slate-500">
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
                           {formatDate(email.date)}
                         </div>
+                      </div>
+                      
+                      <div className="text-sm text-slate-600 bg-white p-2 rounded mb-2">
+                        <p>{email.body?.substring(0, 150)}...</p>
+                      </div>
+                      
+                      <div className="flex items-center justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => handleProcessQuote(email)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <Send className="h-4 w-4 mr-1" />
+                          Process Quote
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* General Emails Section */}
+            {generalEmails.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-slate-700">General Emails</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {generalEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
+                            <EmailClassificationBadge
+                              classification={email.classification}
+                              onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
+                              emailId={email.id}
+                            />
+                          </div>
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm text-slate-600">
+                            {getDisplayText(email, email.classification)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
+                          {formatDate(email.date)}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
+                        <p>{email.body?.substring(0, 150)}...</p>
                       </div>
                     </div>
                   ))}
