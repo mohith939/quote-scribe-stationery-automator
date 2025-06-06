@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import { Mail, User, Clock, Send, CheckCircle } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 
@@ -16,7 +16,6 @@ export function EmailInboxReal() {
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [lastFetchTime, setLastFetchTime] = useState<string>('');
 
   // Create user-specific storage keys
   const getUserStorageKey = (key: string) => {
@@ -42,12 +41,6 @@ export function EmailInboxReal() {
           console.error('Error parsing saved emails:', error);
         }
       }
-
-      // Load last fetch time
-      const savedLastFetch = localStorage.getItem(getUserStorageKey('last_fetch_time'));
-      if (savedLastFetch) {
-        setLastFetchTime(savedLastFetch);
-      }
     }
   }, [user]);
 
@@ -65,63 +58,7 @@ export function EmailInboxReal() {
     }
   }, [emails, user]);
 
-  const testConnection = async () => {
-    if (!scriptUrl.trim()) {
-      toast({
-        title: "URL Required",
-        description: "Please enter your Google Apps Script URL first",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    
-    try {
-      console.log('Testing connection to:', scriptUrl);
-      const response = await fetch(`${scriptUrl}?action=testConnection&_=${Date.now()}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Test connection response:', data);
-      
-      if (data.success) {
-        toast({
-          title: "Connection Successful",
-          description: `Found ${data.emailCount || 0} unread emails. Gmail integration is working!`,
-        });
-      } else {
-        throw new Error(data.error || 'Connection test failed');
-      }
-
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      
-      let errorMessage = 'Connection test failed';
-      if (error instanceof Error) {
-        if (error.message.includes('CORS')) {
-          errorMessage = 'CORS error - Make sure your Apps Script is deployed with "Anyone" access';
-        } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Network error - Check your Apps Script URL and deployment';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      toast({
-        title: "Connection Failed",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFetchEmails = async () => {
+  const handleSubmit = async () => {
     if (!scriptUrl.trim()) {
       toast({
         title: "URL Required",
@@ -134,73 +71,42 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      console.log('Fetching emails from:', scriptUrl);
-      
-      // Use the correct action parameter that matches our Apps Script
-      const response = await fetch(`${scriptUrl}?action=getAllUnreadEmails&maxResults=50&_=${Date.now()}`);
+      const response = await fetch(`${scriptUrl}?action=fetchUnreadEmails&_=${Date.now()}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+        throw new Error(`HTTP error: ${response.status}`);
       }
       
-      const text = await response.text();
-      console.log('Response received, length:', text.length);
+      const data = await response.json();
       
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        console.error('JSON Parse Error:', parseError);
-        console.error('Raw response:', text.substring(0, 1000));
-        throw new Error('Invalid response from Apps Script. Check the script logs.');
-      }
-      
-      console.log('Parsed response:', data);
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch emails');
+      if (data.error) {
+        throw new Error(data.error);
       }
       
       const fetchedEmails = data.emails || [];
       
-      // Process emails with enhanced quote detection
+      // Process emails with quote detection
       const processedEmails = fetchedEmails.map((email: any) => ({
         ...email,
-        isQuoteRequest: email.isQuoteRequest || detectQuoteRequest(email.body + ' ' + email.subject),
-        confidence: email.confidence || 'medium',
-        processingStatus: email.processingStatus || 'pending',
-        category: email.category || 'general'
+        isQuoteRequest: detectQuoteRequest(email.body + ' ' + email.subject),
+        confidence: 'medium' as const,
+        processingStatus: 'pending' as const,
+        category: 'general' as const
       }));
       
       setEmails(processedEmails);
       
-      // Save last fetch time
-      const currentTime = new Date().toLocaleString();
-      setLastFetchTime(currentTime);
-      localStorage.setItem(getUserStorageKey('last_fetch_time'), currentTime);
-      
       toast({
-        title: "Emails Fetched Successfully",
-        description: `Found ${processedEmails.length} unread emails`,
+        title: "Emails Fetched",
+        description: `Successfully fetched ${processedEmails.length} unread emails`,
       });
 
     } catch (error) {
       console.error('Error fetching emails:', error);
       
-      let errorMessage = 'Failed to fetch emails';
-      if (error instanceof Error) {
-        if (error.message.includes('CORS')) {
-          errorMessage = 'CORS error - Check Apps Script deployment settings';
-        } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Network error - Verify Apps Script URL and permissions';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
       toast({
         title: "Fetch Failed",
-        description: errorMessage,
+        description: error instanceof Error ? error.message : "Failed to fetch emails",
         variant: "destructive"
       });
     } finally {
@@ -246,13 +152,11 @@ export function EmailInboxReal() {
     if (user) {
       localStorage.removeItem(getUserStorageKey('gmail_script_url'));
       localStorage.removeItem(getUserStorageKey('gmail_emails'));
-      localStorage.removeItem(getUserStorageKey('last_fetch_time'));
       setScriptUrl('');
       setEmails([]);
-      setLastFetchTime('');
       toast({
         title: "Data Cleared",
-        description: "All saved data has been cleared",
+        description: "Script URL and emails have been cleared",
       });
     }
   };
@@ -263,8 +167,8 @@ export function EmailInboxReal() {
         <div className="flex items-center gap-2">
           <Mail className="h-5 w-5 text-blue-600" />
           <div>
-            <CardTitle>Gmail Email Inbox</CardTitle>
-            <CardDescription>Connect to your Google Apps Script to fetch emails</CardDescription>
+            <CardTitle>Email Inbox</CardTitle>
+            <CardDescription>Enter your Google Apps Script URL to fetch emails</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -272,7 +176,7 @@ export function EmailInboxReal() {
       <CardContent>
         <div className="space-y-4 mb-6">
           <div>
-            <Label htmlFor="scriptUrl">Google Apps Script Web App URL</Label>
+            <Label htmlFor="scriptUrl">Google Apps Script URL</Label>
             <div className="flex gap-2 mt-1">
               <Input
                 id="scriptUrl"
@@ -282,38 +186,19 @@ export function EmailInboxReal() {
                 className="flex-1"
               />
               <Button 
-                onClick={testConnection}
-                variant="outline"
+                onClick={handleSubmit}
                 disabled={isLoading || !scriptUrl.trim()}
               >
-                {isLoading ? 'Testing...' : 'Test'}
-              </Button>
-              <Button 
-                onClick={handleFetchEmails}
-                disabled={isLoading || !scriptUrl.trim()}
-              >
-                {isLoading ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Fetching...
-                  </>
-                ) : (
-                  'Fetch Emails'
-                )}
+                {isLoading ? 'Fetching...' : 'Fetch Emails'}
               </Button>
             </div>
           </div>
           
           {scriptUrl && (
-            <div className="flex gap-2 items-center flex-wrap">
+            <div className="flex gap-2">
               <Badge variant="secondary" className="bg-green-50 text-green-700">
                 Apps Script URL Configured
               </Badge>
-              {lastFetchTime && (
-                <Badge variant="outline" className="text-xs">
-                  Last fetch: {lastFetchTime}
-                </Badge>
-              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -326,40 +211,17 @@ export function EmailInboxReal() {
           )}
         </div>
 
-        {/* Setup Instructions */}
-        {!scriptUrl && (
-          <div className="rounded-md bg-blue-50 p-4 mb-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <AlertTriangle className="h-5 w-5 text-blue-400" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800">Setup Instructions</h3>
-                <div className="mt-2 text-sm text-blue-700">
-                  <ol className="list-decimal list-inside space-y-1">
-                    <li>Copy the complete Apps Script code from src/reference/FinalCompleteGoogleAppsScript.js</li>
-                    <li>Go to script.google.com and create a new project</li>
-                    <li>Replace all code with the copied script</li>
-                    <li>Deploy as Web app with "Execute as: Me" and "Who has access: Anyone"</li>
-                    <li>Copy the web app URL and paste it above</li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {emails.length === 0 && !isLoading ? (
           <div className="text-center py-12 text-slate-500">
             <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium mb-2">No emails loaded</h3>
-            <p className="text-sm">Configure your Apps Script URL and click "Fetch Emails" to load your unread Gmail messages</p>
+            <p className="text-sm">Enter your Apps Script URL and click "Fetch Emails" to load your unread Gmail messages</p>
           </div>
         ) : isLoading ? (
           <div className="text-center py-12 text-slate-500">
-            <RefreshCw className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-spin" />
+            <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-pulse" />
             <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
-            <p className="text-sm">Loading your unread messages from Gmail</p>
+            <p className="text-sm">Loading your unread messages</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -400,16 +262,9 @@ export function EmailInboxReal() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        ID: {email.id.substring(0, 8)}...
-                      </Badge>
-                      {email.confidence && (
-                        <Badge variant="outline" className="text-xs">
-                          {email.confidence} confidence
-                        </Badge>
-                      )}
-                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      ID: {email.id.substring(0, 8)}...
+                    </Badge>
                     <div className="flex gap-2">
                       {email.isQuoteRequest ? (
                         <Button
