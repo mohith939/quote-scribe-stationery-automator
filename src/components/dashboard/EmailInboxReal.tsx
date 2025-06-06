@@ -111,27 +111,79 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      let url = `${scriptUrl}?action=getAllUnreadEmails&_=${Date.now()}`;
+      console.log('Starting email fetch with URL:', scriptUrl);
       
-      // For incremental fetch, add timestamp parameter
-      if (incremental && lastFetchTime) {
-        const timestamp = lastFetchTime.toISOString();
-        url += `&since=${encodeURIComponent(timestamp)}`;
+      // Try multiple action names to ensure compatibility
+      const actions = ['getAllUnreadEmails', 'getUnreadEmails', 'fetchUnreadEmails'];
+      let response;
+      let data;
+      
+      for (const action of actions) {
+        try {
+          let url = `${scriptUrl}?action=${action}&_=${Date.now()}`;
+          
+          // For incremental fetch, add timestamp parameter
+          if (incremental && lastFetchTime) {
+            const timestamp = lastFetchTime.toISOString();
+            url += `&since=${encodeURIComponent(timestamp)}`;
+          }
+          
+          console.log('Trying action:', action, 'with URL:', url);
+          
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            console.error(`HTTP error for action ${action}:`, response.status, response.statusText);
+            continue;
+          }
+          
+          const responseText = await response.text();
+          console.log('Raw response:', responseText.substring(0, 200) + '...');
+          
+          try {
+            data = JSON.parse(responseText);
+            
+            if (data.error) {
+              console.error(`Error from script for action ${action}:`, data.error);
+              if (action === actions[actions.length - 1]) {
+                throw new Error(data.error);
+              }
+              continue;
+            }
+            
+            // If we get here, we have valid data
+            console.log('Successfully fetched with action:', action);
+            break;
+            
+          } catch (parseError) {
+            console.error(`JSON parse error for action ${action}:`, parseError);
+            if (action === actions[actions.length - 1]) {
+              throw new Error('Invalid response format from Google Apps Script');
+            }
+            continue;
+          }
+          
+        } catch (fetchError) {
+          console.error(`Fetch error for action ${action}:`, fetchError);
+          if (action === actions[actions.length - 1]) {
+            throw fetchError;
+          }
+          continue;
+        }
       }
       
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
+      if (!data) {
+        throw new Error('Failed to fetch emails with any supported action');
       }
       
       const fetchedEmails = data.emails || [];
+      console.log('Fetched emails count:', fetchedEmails.length);
       
       // Classify and enhance emails
       const enhancedEmails: EnhancedEmailMessage[] = fetchedEmails.map((email: EmailMessage) => ({
@@ -167,9 +219,21 @@ export function EmailInboxReal() {
     } catch (error) {
       console.error('Error fetching emails:', error);
       
+      let errorMessage = "Failed to fetch emails";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('Invalid action')) {
+        errorMessage = 'Google Apps Script does not recognize the action. Please check your script deployment.';
+      } else if (errorMessage.includes('Failed to fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and script URL.';
+      }
+      
       toast({
         title: "Fetch Failed",
-        description: error instanceof Error ? error.message : "Failed to fetch emails",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
