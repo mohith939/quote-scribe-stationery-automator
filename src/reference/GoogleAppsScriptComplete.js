@@ -25,7 +25,7 @@ const CONFIG = {
   maxEmailsToFetch: 100
 };
 
-// FIXED: Handle OPTIONS requests for CORS preflight
+// FIXED: Handle OPTIONS requests for CORS preflight with proper headers
 function doOptions(e) {
   return ContentService
     .createTextOutput('')
@@ -36,7 +36,7 @@ function doOptions(e) {
     .setHeader('Access-Control-Max-Age', '86400');
 }
 
-// FIXED: Proper CORS response creation
+// FIXED: Proper CORS response creation with all required headers
 function createCORSResponse(data) {
   const jsonData = typeof data === 'string' ? data : JSON.stringify(data);
   

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,14 +90,30 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
 
     console.log('Passing quote data to templates:', quoteData);
 
-    if (onSwitchToTemplates) {
-      onSwitchToTemplates(quoteData);
+    // Store the quote data for the templates component
+    if (user) {
+      localStorage.setItem(getUserStorageKey('current_quote_data'), JSON.stringify(quoteData));
     }
 
-    toast({
-      title: "Redirecting to Quote Templates",
-      description: `Opening quote template for ${item.customerInfo.name}`,
-    });
+    // Call the callback to switch to templates
+    if (onSwitchToTemplates) {
+      onSwitchToTemplates(quoteData);
+      
+      toast({
+        title: "Redirecting to Quote Templates",
+        description: `Opening quote template for ${item.customerInfo.name}`,
+      });
+    } else {
+      // Fallback: Try to trigger navigation through window events
+      window.dispatchEvent(new CustomEvent('switchToTemplates', { 
+        detail: quoteData 
+      }));
+      
+      toast({
+        title: "Quote Data Prepared",
+        description: `Quote data for ${item.customerInfo.name} is ready. Please switch to Templates tab.`,
+      });
+    }
   };
 
   const handleSendResponse = async (item: ProcessingQueueItem) => {
@@ -249,9 +264,9 @@ Call to confirm order.`
       
       if (error instanceof Error) {
         if (error.message.includes('CORS')) {
-          errorMessage = "CORS error: Please update your Google Apps Script with proper CORS headers.";
+          errorMessage = "CORS error: Please redeploy your Google Apps Script with proper CORS headers.";
         } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is deployed correctly.";
+          errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is redeployed with CORS fixes.";
         } else {
           errorMessage = error.message;
         }
