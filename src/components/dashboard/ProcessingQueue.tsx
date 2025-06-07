@@ -22,6 +22,36 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
     return user ? `${key}_${user.id}` : key;
   };
 
+  // Optimized storage management
+  const MAX_QUEUE_ITEMS = 20; // Limit queue size
+
+  const safeStorageSet = (key: string, data: any) => {
+    try {
+      // Limit the queue size to prevent storage overflow
+      const limitedData = Array.isArray(data) ? data.slice(0, MAX_QUEUE_ITEMS) : data;
+      const jsonString = JSON.stringify(limitedData);
+      
+      // Check if data is too large (over 1MB for this specific data)
+      if (new Blob([jsonString]).size > 1024 * 1024) {
+        console.warn('Queue data too large, truncating...');
+        const truncatedData = Array.isArray(limitedData) ? limitedData.slice(0, 10) : limitedData;
+        localStorage.setItem(key, JSON.stringify(truncatedData));
+      } else {
+        localStorage.setItem(key, jsonString);
+      }
+    } catch (error) {
+      console.error('Failed to save queue data:', error);
+      // Clear old queue data and try again with limited items
+      localStorage.removeItem(key);
+      try {
+        const limitedData = Array.isArray(data) ? data.slice(0, 5) : data;
+        localStorage.setItem(key, JSON.stringify(limitedData));
+      } catch (retryError) {
+        console.error('Failed to save even limited queue data:', retryError);
+      }
+    }
+  };
+
   // Load queue items from localStorage
   useEffect(() => {
     if (user) {
@@ -30,7 +60,9 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       if (savedQueue) {
         try {
           const parsedQueue = JSON.parse(savedQueue);
-          setQueueItems(parsedQueue);
+          // Ensure we don't load too many items
+          const limitedQueue = Array.isArray(parsedQueue) ? parsedQueue.slice(0, MAX_QUEUE_ITEMS) : [];
+          setQueueItems(limitedQueue);
         } catch (error) {
           console.error('Error parsing processing queue:', error);
           localStorage.removeItem(queueKey);
@@ -43,7 +75,7 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   useEffect(() => {
     if (user && queueItems.length >= 0) {
       const queueKey = getUserStorageKey('processing_queue');
-      localStorage.setItem(queueKey, JSON.stringify(queueItems));
+      safeStorageSet(queueKey, queueItems);
     }
   }, [queueItems, user]);
 
@@ -71,9 +103,13 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
 
   const handleSendResponse = async (item: ProcessingQueueItem) => {
     try {
-      // Get selected template from localStorage
+      console.log('Starting email send process for:', item.customerInfo.name);
+      
+      // Get selected template from localStorage with fallback
       const templateKey = getUserStorageKey('selected_template');
       const selectedTemplate = localStorage.getItem(templateKey) || 'formal-business';
+      
+      console.log('Using template:', selectedTemplate);
       
       // Get template content based on selected template
       const templates = {
@@ -141,8 +177,10 @@ Call to confirm order.`
       // Replace placeholders with actual data
       const productList = item.detectedProducts.map(p => p.product).join(', ');
       const productDetails = item.detectedProducts.map(p => {
-        const price = 100; // Default price, you can make this dynamic
-        return `- ${p.product}: ${p.quantity} units × ₹${price} = ₹${(p.quantity * price)}`;
+        const price = 100; // Default price
+        const quantity = p.quantity || 1;
+        const total = quantity * price;
+        return `- ${p.product}: ${quantity} units × ₹${price} = ₹${total}`;
       }).join('\n');
       
       const emailSubject = template.subject
@@ -183,11 +221,15 @@ Call to confirm order.`
         })
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
       }
 
       const result = await response.json();
+      console.log('Response result:', result);
+      
       if (!result.success) {
         throw new Error(result.error || 'Failed to send email');
       }
@@ -202,9 +244,22 @@ Call to confirm order.`
 
     } catch (error) {
       console.error('Error sending response:', error);
+      
+      let errorMessage = "Failed to send response. Please check your configuration.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('CORS')) {
+          errorMessage = "CORS error: Please update your Google Apps Script with proper CORS headers.";
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is deployed correctly.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Send Failed",
-        description: error instanceof Error ? error.message : "Failed to send response. Check your Google Apps Script configuration.",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -272,7 +327,7 @@ Call to confirm order.`
           <div>
             <CardTitle>Processing Queue</CardTitle>
             <CardDescription>
-              Emails ready for quote generation and processing
+              Emails ready for quote generation and processing (optimized storage)
             </CardDescription>
           </div>
         </div>
@@ -293,6 +348,11 @@ Call to confirm order.`
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 {queueItems.length} Item{queueItems.length !== 1 ? 's' : ''} in Queue
               </Badge>
+              {queueItems.length >= MAX_QUEUE_ITEMS && (
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                  Queue limit reached (max {MAX_QUEUE_ITEMS})
+                </Badge>
+              )}
             </div>
             
             <div className="space-y-3 max-h-96 overflow-y-auto">

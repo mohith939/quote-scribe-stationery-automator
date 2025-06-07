@@ -24,29 +24,57 @@ interface EnhancedEmailMessage extends EmailMessage {
   }>;
 }
 
-// Storage utilities with quota management
-const MAX_STORAGE_SIZE = 4 * 1024 * 1024; // 4MB limit
-const MAX_EMAILS_TO_STORE = 100; // Store up to 100 emails
+// Optimized storage utilities with better quota management
+const MAX_STORAGE_SIZE = 2 * 1024 * 1024; // Reduced to 2MB limit
+const MAX_EMAILS_TO_STORE = 50; // Reduced to 50 emails to save space
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
 
 const getStorageSize = (data: string): number => {
   return new Blob([data]).size;
+};
+
+const compressEmailData = (email: EnhancedEmailMessage): any => {
+  return {
+    id: email.id,
+    from: email.from,
+    subject: email.subject,
+    date: email.date,
+    // Keep only essential body content (first 500 chars)
+    body: email.body?.substring(0, 500) || '',
+    snippet: email.snippet,
+    classification: {
+      isQuoteRequest: email.classification.isQuoteRequest,
+      confidence: email.classification.confidence,
+      detectedProduct: email.classification.detectedProduct ? {
+        name: email.classification.detectedProduct.name,
+        code: email.classification.detectedProduct.code
+      } : null
+    },
+    // Compress attachments info
+    attachments: email.attachments?.map(att => ({
+      filename: att.filename,
+      size: att.size,
+      attachmentId: att.attachmentId
+    })) || []
+  };
 };
 
 const safeLocalStorageSet = (key: string, value: string): boolean => {
   try {
     const size = getStorageSize(value);
     if (size > MAX_STORAGE_SIZE) {
-      console.warn(`Data too large for localStorage: ${size} bytes`);
+      console.warn(`Data too large for localStorage: ${size} bytes, skipping save`);
       return false;
     }
     localStorage.setItem(key, value);
     return true;
   } catch (error) {
     if (error instanceof DOMException && error.code === 22) {
-      console.warn('localStorage quota exceeded, clearing old data');
+      console.warn('localStorage quota exceeded, clearing all email data');
+      // Clear all email-related data
       const keys = Object.keys(localStorage);
       keys.forEach(k => {
-        if (k.includes('gmail_emails_') || k.includes('last_fetch_time_')) {
+        if (k.includes('gmail_emails') || k.includes('last_fetch_time') || k.includes('processing_queue')) {
           localStorage.removeItem(k);
         }
       });
@@ -63,15 +91,10 @@ const safeLocalStorageSet = (key: string, value: string): boolean => {
   }
 };
 
-const compressEmails = (emails: EnhancedEmailMessage[]): EnhancedEmailMessage[] => {
+const compressEmails = (emails: EnhancedEmailMessage[]): any[] => {
   return emails
     .slice(0, MAX_EMAILS_TO_STORE)
-    .map(email => ({
-      ...email,
-      // Keep full body for viewing
-      body: email.body || '',
-      htmlBody: email.htmlBody || '',
-    }));
+    .map(compressEmailData);
 };
 
 export function EmailInboxReal() {
@@ -117,12 +140,13 @@ export function EmailInboxReal() {
       if (savedEmails) {
         try {
           const parsedEmails = JSON.parse(savedEmails);
-          const enhancedEmails = parsedEmails.map((email: EmailMessage) => ({
+          // Reconstruct full email objects from compressed data
+          const enhancedEmails = parsedEmails.map((email: any) => ({
             ...email,
-            classification: classifyEmail(email, products)
+            classification: email.classification || classifyEmail(email, products)
           }));
           // Sort by date descending (newest first)
-          enhancedEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          enhancedEmails.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
           setEmails(enhancedEmails);
         } catch (error) {
           console.error('Error parsing saved emails:', error);
@@ -153,7 +177,7 @@ export function EmailInboxReal() {
       if (!success) {
         toast({
           title: "Storage Warning",
-          description: "Unable to save all email data. Consider clearing old emails.",
+          description: "Unable to save all email data. Email cache has been optimized.",
           variant: "destructive"
         });
       }
@@ -173,7 +197,7 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      let url = `${scriptUrl}?action=getAllUnreadEmails&maxResults=100&_=${Date.now()}`;
+      let url = `${scriptUrl}?action=getAllUnreadEmails&maxResults=50&_=${Date.now()}`; // Reduced to 50 emails
       
       if (incremental && lastFetchTime) {
         const timestamp = lastFetchTime.toISOString();
@@ -233,11 +257,19 @@ export function EmailInboxReal() {
     } catch (error) {
       console.error('Error fetching emails:', error);
       
-      toast({
-        title: "Fetch Failed",
-        description: error instanceof Error ? error.message : "Failed to fetch emails",
-        variant: "destructive"
-      });
+      if (error instanceof Error && error.message.includes('CORS')) {
+        toast({
+          title: "CORS Error",
+          description: "Your Google Apps Script needs CORS headers. Check the console for detailed instructions.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Fetch Failed",
+          description: error instanceof Error ? error.message : "Failed to fetch emails",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -314,7 +346,7 @@ export function EmailInboxReal() {
       dateAdded: new Date().toISOString()
     };
     
-    const updatedQueue = [queueItem, ...existingQueue];
+    const updatedQueue = [queueItem, ...existingQueue.slice(0, 19)]; // Keep only 20 items max
     localStorage.setItem(queueKey, JSON.stringify(updatedQueue));
     
     toast({
@@ -370,7 +402,8 @@ export function EmailInboxReal() {
       const keys = [
         getUserStorageKey('gmail_script_url'),
         getUserStorageKey('gmail_emails'),
-        getUserStorageKey('last_fetch_time')
+        getUserStorageKey('last_fetch_time'),
+        getUserStorageKey('processing_queue')
       ];
       
       keys.forEach(key => {
@@ -400,7 +433,7 @@ export function EmailInboxReal() {
             <Mail className="h-5 w-5 text-blue-600" />
             <div>
               <CardTitle>Email Inbox</CardTitle>
-              <CardDescription>Manage your emails with automatic classification</CardDescription>
+              <CardDescription>Manage your emails with automatic classification (optimized storage)</CardDescription>
             </div>
           </div>
           <EmailRefreshButton 
@@ -436,6 +469,9 @@ export function EmailInboxReal() {
             <div className="flex gap-2">
               <Badge variant="secondary" className="bg-green-50 text-green-700">
                 Apps Script URL Configured
+              </Badge>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                Optimized Storage ({MAX_EMAILS_TO_STORE} emails max)
               </Badge>
               <Button
                 variant="outline"
