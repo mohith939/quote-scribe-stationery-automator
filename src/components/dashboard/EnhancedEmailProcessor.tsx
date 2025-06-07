@@ -61,7 +61,7 @@ export function EnhancedEmailProcessor({ emails, onEmailProcessed }: EnhancedEma
       toast({
         title: "Enhanced Processing Complete",
         description: `Classified with ${classification.confidence} confidence (${classification.score}% score)`,
-        variant: classification.confidence === 'high' ? 'default' : 'secondary'
+        variant: classification.confidence === 'high' ? 'default' : 'destructive'
       });
       
       onEmailProcessed(email.id);

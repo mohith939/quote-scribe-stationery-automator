@@ -11,8 +11,8 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { EmailRefreshButton } from "./EmailRefreshButton";
 import { EmailClassificationBadge } from "./EmailClassificationBadge";
 import { EnhancedEmailProcessor } from "./EnhancedEmailProcessor";
-import { enhancedClassifyEmail } from "@/services/enhancedEmailClassification";
-import { getDisplayText } from "@/services/emailClassificationService";
+import { enhancedClassifyEmail, EmailClassification } from "@/services/enhancedEmailClassification";
+import { classifyEmail, getDisplayText } from "@/services/emailClassificationService";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -146,7 +146,7 @@ export function EmailInboxReal() {
           // Reconstruct full email objects from compressed data
           const enhancedEmails = parsedEmails.map((email: any) => ({
             ...email,
-            classification: email.classification || classifyEmail(email, products)
+            classification: email.classification || enhancedClassifyEmail(email, products)
           }));
           // Sort by date descending (newest first)
           enhancedEmails.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
