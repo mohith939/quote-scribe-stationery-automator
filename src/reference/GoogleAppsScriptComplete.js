@@ -1,6 +1,6 @@
 
 /**
- * Complete Gmail Integration Script for QuoteScribe - FINAL VERSION
+ * Complete Gmail Integration Script for QuoteScribe - FIXED CORS VERSION
  * This combines enhanced email fetching with quote detection and processing
  * 
  * Instructions:
@@ -17,10 +17,15 @@ const CONFIG = {
   sheetId: 'YOUR_GOOGLE_SHEET_ID_HERE', // Replace with your Google Sheets ID
   companyName: 'Your Company Name',
   contactInfo: 'mailtrash939@gmail.com',
-  maxEmailsToFetch: 500 // Increased limit to fetch more emails
+  maxEmailsToFetch: 50 // Limited to 50 emails as requested
 };
 
 function doGet(e) {
+  // Handle CORS preflight
+  if (e && e.parameter && e.parameter.method === 'OPTIONS') {
+    return handleCORS();
+  }
+  
   try {
     const params = e && e.parameter ? e.parameter : {};
     const action = params.action || 'default';
@@ -29,32 +34,34 @@ function doGet(e) {
       case 'getEmails':
       case 'getUnreadEmails':
       case 'getAllUnreadEmails':
-        return getAllUnreadEmails(params.maxResults);
+        return createCORSResponse(getAllUnreadEmails(params.maxResults));
       case 'testConnection':
-        return testConnection();
+        return createCORSResponse(testConnection());
       case 'markAsRead':
-        return markEmailAsRead(params.emailId);
+        return createCORSResponse(markEmailAsRead(params.emailId));
       case 'sendEmail':
-        return sendQuoteEmail(params.to, params.subject, params.body, params.emailId);
+        return createCORSResponse(sendQuoteEmail(params.to, params.subject, params.body, params.emailId));
       case 'logQuote':
-        return logQuoteToSheet(JSON.parse(params.quoteData || '{}'));
+        return createCORSResponse(logQuoteToSheet(JSON.parse(params.quoteData || '{}')));
       case 'processEmail':
-        return processEmailById(params.emailId);
+        return createCORSResponse(processEmailById(params.emailId));
       case 'getDashboardStats':
-        return getDashboardStats();
+        return createCORSResponse(getDashboardStats());
+      case 'getProductCatalog':
+        return createCORSResponse(getProductCatalog());
       default:
-        return ContentService.createTextOutput(JSON.stringify({
+        return createCORSResponse({
           success: true,
           message: 'QuoteScribe Gmail Integration Active - ' + new Date().toISOString(),
           timestamp: new Date().toISOString()
-        })).setMimeType(ContentService.MimeType.JSON);
+        });
     }
   } catch (error) {
     Logger.log('doGet error: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCORSResponse({
       success: false,
       error: 'doGet error: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
 
@@ -69,48 +76,167 @@ function doPost(e) {
     
     switch (action) {
       case 'markAsRead':
-        return markEmailAsRead(data.emailId);
+        return createCORSResponse(markEmailAsRead(data.emailId));
       case 'sendEmail':
-        return sendQuoteEmail(data.to, data.subject, data.body, data.emailId);
+        return createCORSResponse(sendQuoteEmail(data.to, data.subject, data.body, data.emailId));
       case 'logQuote':
-        return logQuoteToSheet(data.quoteData);
+        return createCORSResponse(logQuoteToSheet(data.quoteData));
       case 'processEmail':
-        return processEmailById(data.emailId);
+        return createCORSResponse(processEmailById(data.emailId));
+      case 'getProductCatalog':
+        return createCORSResponse(getProductCatalog());
       default:
-        return ContentService.createTextOutput(JSON.stringify({
+        return createCORSResponse({
           success: false, 
           error: 'Unknown action: ' + action
-        })).setMimeType(ContentService.MimeType.JSON);
+        });
     }
   } catch (error) {
     Logger.log('doPost error: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return createCORSResponse({
       success: false,
       error: 'Error processing request: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
+}
+
+// Handle CORS preflight requests
+function handleCORS() {
+  return ContentService
+    .createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    .setHeader('Access-Control-Max-Age', '86400');
+}
+
+// FIXED: Proper CORS response creation for Google Apps Script
+function createCORSResponse(data) {
+  const jsonData = typeof data === 'string' ? data : JSON.stringify(data);
+  
+  return ContentService
+    .createTextOutput(jsonData)
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+// Get product catalog from Google Sheets (for your 32,000+ products)
+function getProductCatalog() {
+  try {
+    if (!CONFIG.sheetId || CONFIG.sheetId === 'YOUR_GOOGLE_SHEET_ID_HERE') {
+      throw new Error('Sheet ID not configured for product catalog');
+    }
+    
+    const sheet = SpreadsheetApp.openById(CONFIG.sheetId);
+    const productSheet = sheet.getSheetByName('Products') || sheet.getActiveSheet();
+    
+    // Get all data from the sheet
+    const data = productSheet.getDataRange().getValues();
+    
+    if (data.length < 2) {
+      throw new Error('No product data found in sheet');
+    }
+    
+    const headers = data[0];
+    const products = [];
+    
+    // Convert rows to product objects
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0] && !row[1]) continue; // Skip empty rows
+      
+      const product = {
+        brand: row[0] || '',
+        name: row[1] || '',
+        product_code: row[2] || '',
+        unit_price: parseFloat(row[3]) || 0,
+        gst_rate: parseFloat(row[4]) || 18
+      };
+      
+      if (product.name && product.product_code) {
+        products.push(product);
+      }
+    }
+    
+    Logger.log(`Loaded ${products.length} products from catalog`);
+    
+    return {
+      success: true,
+      products: products,
+      totalCount: products.length,
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    Logger.log('Error fetching product catalog: ' + error.toString());
+    return {
+      success: false,
+      error: 'Failed to fetch product catalog: ' + error.toString(),
+      products: []
+    };
+  }
+}
+
+// Enhanced product matching with your catalog
+function findProductInCatalog(productName, catalog) {
+  if (!catalog || catalog.length === 0) return null;
+  
+  const searchTerm = productName.toLowerCase();
+  
+  // First try exact match
+  for (let i = 0; i < catalog.length; i++) {
+    const product = catalog[i];
+    if (product.name.toLowerCase() === searchTerm ||
+        product.product_code.toLowerCase() === searchTerm) {
+      return product;
+    }
+  }
+  
+  // Then try partial match
+  for (let i = 0; i < catalog.length; i++) {
+    const product = catalog[i];
+    if (product.name.toLowerCase().includes(searchTerm) ||
+        product.product_code.toLowerCase().includes(searchTerm) ||
+        searchTerm.includes(product.name.toLowerCase())) {
+      return product;
+    }
+  }
+  
+  return null;
 }
 
 function getAllUnreadEmails(maxResults) {
   try {
-    const limit = parseInt(maxResults) || CONFIG.maxEmailsToFetch;
-    Logger.log('Fetching ALL unread emails with limit: ' + limit);
+    const limit = parseInt(maxResults) || CONFIG.maxEmailsToFetch; // Max 50 emails
+    Logger.log('Fetching unread emails with limit: ' + limit);
     
-    // Search for ALL unread emails in the inbox (removed target email restriction)
+    // Search for unread emails in the inbox
     const threads = GmailApp.search('is:unread in:inbox', 0, limit);
     const emails = [];
     
     Logger.log('Found ' + threads.length + ' unread threads');
     
+    // Get product catalog for pricing
+    let productCatalog = [];
+    try {
+      const catalogData = getProductCatalog();
+      if (catalogData.success) {
+        productCatalog = catalogData.products;
+      }
+    } catch (e) {
+      Logger.log('Could not load product catalog: ' + e.toString());
+    }
+    
     threads.forEach(function(thread, threadIndex) {
       try {
         const messages = thread.getMessages();
         
-        // Process all unread messages in each thread
         messages.forEach(function(message, messageIndex) {
           if (message.isUnread()) {
             try {
-              // Get attachments info
               const attachments = message.getAttachments();
               const attachmentInfo = attachments.map(function(attachment) {
                 return {
@@ -120,7 +246,6 @@ function getAllUnreadEmails(maxResults) {
                 };
               });
               
-              // Get both plain and HTML body
               const plainBody = message.getPlainBody();
               const htmlBody = message.getBody();
               
@@ -130,7 +255,20 @@ function getAllUnreadEmails(maxResults) {
               const quantities = detectQuantities(plainBody);
               const confidence = calculateConfidence(isQuoteRequest, detectedProducts, quantities);
               
-              // Determine processing status
+              // Enhanced product detection with real pricing
+              const enhancedProducts = detectedProducts.map(function(productName) {
+                const catalogProduct = findProductInCatalog(productName, productCatalog);
+                return {
+                  product: productName,
+                  quantity: quantities.length > 0 ? quantities[0].quantity : 1,
+                  confidence: confidence,
+                  unitPrice: catalogProduct ? catalogProduct.unit_price : 0,
+                  gstRate: catalogProduct ? catalogProduct.gst_rate : 18,
+                  productCode: catalogProduct ? catalogProduct.product_code : '',
+                  brand: catalogProduct ? catalogProduct.brand : ''
+                };
+              });
+              
               let processingStatus = 'pending';
               if (isQuoteRequest) {
                 if (confidence === 'high') {
@@ -142,7 +280,6 @@ function getAllUnreadEmails(maxResults) {
                 processingStatus = 'non_quote_message';
               }
               
-              // Determine category
               const category = isQuoteRequest ? 'quote_request' : 
                               (confidence === 'none' ? 'pending_classification' : 'non_quote_message');
               
@@ -158,9 +295,8 @@ function getAllUnreadEmails(maxResults) {
                 attachments: attachmentInfo,
                 hasAttachments: attachments.length > 0,
                 snippet: plainBody.substring(0, 200) + '...',
-                // Enhanced fields from quote detection
                 isQuoteRequest: isQuoteRequest,
-                products: detectedProducts,
+                products: enhancedProducts, // Now includes real pricing
                 quantities: quantities,
                 confidence: confidence,
                 processingStatus: processingStatus,
@@ -179,22 +315,24 @@ function getAllUnreadEmails(maxResults) {
     
     Logger.log('Successfully processed ' + emails.length + ' unread emails');
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       emails: emails,
       timestamp: new Date().toISOString(),
       totalCount: emails.length,
       threadsProcessed: threads.length,
-      hasMoreEmails: threads.length >= limit
-    })).setMimeType(ContentService.MimeType.JSON);
+      hasMoreEmails: threads.length >= limit,
+      productCatalogLoaded: productCatalog.length > 0,
+      catalogSize: productCatalog.length
+    };
     
   } catch (error) {
     Logger.log('Error fetching emails: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: 'Failed to fetch emails: ' + error.toString(),
       emails: []
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
@@ -297,17 +435,17 @@ function markEmailAsRead(emailId) {
     const message = GmailApp.getMessageById(emailId);
     message.markRead();
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       message: 'Email marked as read'
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Error marking email as read: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: 'Failed to mark email as read: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
@@ -329,17 +467,17 @@ function sendQuoteEmail(to, subject, body, originalEmailId) {
     }
     
     Logger.log('Email sent successfully to: ' + to);
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       message: 'Email sent successfully'
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Error sending email: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: 'Failed to send email: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
@@ -373,17 +511,17 @@ function logQuoteToSheet(quoteData) {
     ]);
     
     Logger.log('Quote logged to sheet successfully');
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       message: 'Quote logged successfully'
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Error logging to sheet: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: 'Failed to log quote: ' + error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
@@ -392,10 +530,10 @@ function processEmailById(emailId) {
   try {
     const message = GmailApp.getMessageById(emailId);
     if (!message) {
-      return ContentService.createTextOutput(JSON.stringify({
+      return {
         success: false,
         error: 'Email not found'
-      })).setMimeType(ContentService.MimeType.JSON);
+      };
     }
 
     const body = message.getPlainBody();
@@ -411,32 +549,30 @@ function processEmailById(emailId) {
     // Mark as read
     message.markRead();
 
-    // Get product prices (you can customize these)
-    const productPrices = {
-      'ZTA-500N Digital Force Gauge': 83200.00,
-      'Zeal England Glass Thermometer Range : 10 Deg C -110 Deg C': 750.00,
-      'zero plate Non-Ferrous': 1800.00,
-      'zero plate Ferrous': 1800.00,
-      'Zero microns metallic plate': 850.00,
-      'A4 Paper': 0.02,
-      'Ballpoint Pens': 1.50,
-      'Notebooks': 3.75,
-      'Staplers': 8.99,
-      'Whiteboard Markers': 2.50,
-      'Sticky Notes': 3.25
-    };
-
+    // Get product prices from catalog
     let unitPrice = 1000; // Default price
     let totalPrice = 0;
     let quantity = 1;
 
     if (products.length > 0 && quantities.length > 0) {
-      unitPrice = productPrices[products[0]] || 1000;
+      // Try to get real pricing from catalog
+      try {
+        const catalogData = getProductCatalog();
+        if (catalogData.success) {
+          const catalogProduct = findProductInCatalog(products[0], catalogData.products);
+          if (catalogProduct) {
+            unitPrice = catalogProduct.unit_price;
+          }
+        }
+      } catch (e) {
+        Logger.log('Could not get catalog pricing: ' + e.toString());
+      }
+      
       quantity = quantities[0].quantity;
       totalPrice = quantity * unitPrice;
     }
 
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       message: 'Email processed successfully',
       details: {
@@ -450,14 +586,14 @@ function processEmailById(emailId) {
         totalPrice: totalPrice,
         quantity: quantity
       }
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Error processing email: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
@@ -472,7 +608,7 @@ function extractEmailAddress(fromString) {
 
 function getDashboardStats() {
   try {
-    // Get unread emails count
+    // Get unread emails count (limited to 50)
     const unreadThreads = GmailApp.search('is:unread in:inbox', 0, 50);
     let unreadCount = 0;
     let quoteRequestCount = 0;
@@ -490,7 +626,7 @@ function getDashboardStats() {
       }
     }
 
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       stats: {
         unreadEmails: unreadCount,
@@ -498,20 +634,20 @@ function getDashboardStats() {
         processedToday: 0, // You can implement this based on your logging
         successRate: 85 // You can calculate this based on your data
       }
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Error getting dashboard stats: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
 
 function testConnection() {
   try {
-    // Test Gmail access and count unread emails
+    // Test Gmail access and count unread emails (limited to 10 for testing)
     const unreadThreads = GmailApp.search('is:unread in:inbox', 0, 10);
     let unreadCount = 0;
     
@@ -535,7 +671,7 @@ function testConnection() {
       }
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: true,
       message: 'Google Apps Script connection successful',
       timestamp: new Date().toISOString(),
@@ -550,14 +686,14 @@ function testConnection() {
         companyName: CONFIG.companyName,
         maxEmailsToFetch: CONFIG.maxEmailsToFetch
       }
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
     
   } catch (error) {
     Logger.log('Connection test failed: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
+    return {
       success: false,
       error: 'Connection test failed: ' + error.toString(),
       timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    };
   }
 }
