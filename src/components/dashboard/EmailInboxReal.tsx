@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +17,59 @@ import { supabase } from "@/integrations/supabase/client";
 interface EnhancedEmailMessage extends EmailMessage {
   classification: EmailClassification;
 }
+
+// Storage utilities with quota management
+const MAX_STORAGE_SIZE = 4 * 1024 * 1024; // 4MB limit (leaving room for other data)
+const MAX_EMAILS_TO_STORE = 100; // Limit number of emails stored
+
+const getStorageSize = (data: string): number => {
+  return new Blob([data]).size;
+};
+
+const safeLocalStorageSet = (key: string, value: string): boolean => {
+  try {
+    const size = getStorageSize(value);
+    if (size > MAX_STORAGE_SIZE) {
+      console.warn(`Data too large for localStorage: ${size} bytes`);
+      return false;
+    }
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (error instanceof DOMException && error.code === 22) {
+      console.warn('localStorage quota exceeded, clearing old data');
+      // Try to free up space by removing old email data
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if (k.includes('gmail_emails_') || k.includes('last_fetch_time_')) {
+          localStorage.removeItem(k);
+        }
+      });
+      // Try again after cleanup
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (retryError) {
+        console.error('Still unable to save to localStorage after cleanup');
+        return false;
+      }
+    }
+    console.error('localStorage error:', error);
+    return false;
+  }
+};
+
+const compressEmails = (emails: EnhancedEmailMessage[]): EnhancedEmailMessage[] => {
+  // Keep only the most recent emails and compress data
+  return emails
+    .slice(0, MAX_EMAILS_TO_STORE)
+    .map(email => ({
+      ...email,
+      // Truncate body to save space
+      body: email.body?.substring(0, 500) || '',
+      htmlBody: '', // Remove HTML body to save space
+    }));
+};
 
 export function EmailInboxReal() {
   const { toast } = useToast();
@@ -69,6 +121,8 @@ export function EmailInboxReal() {
           setEmails(enhancedEmails);
         } catch (error) {
           console.error('Error parsing saved emails:', error);
+          // Clear corrupted data
+          localStorage.removeItem(getUserStorageKey('gmail_emails'));
         }
       }
 
@@ -82,13 +136,23 @@ export function EmailInboxReal() {
   // Save data whenever it changes
   useEffect(() => {
     if (user && scriptUrl) {
-      localStorage.setItem(getUserStorageKey('gmail_script_url'), scriptUrl);
+      safeLocalStorageSet(getUserStorageKey('gmail_script_url'), scriptUrl);
     }
   }, [scriptUrl, user]);
 
   useEffect(() => {
     if (user && emails.length > 0) {
-      localStorage.setItem(getUserStorageKey('gmail_emails'), JSON.stringify(emails));
+      const compressedEmails = compressEmails(emails);
+      const emailsJson = JSON.stringify(compressedEmails);
+      const success = safeLocalStorageSet(getUserStorageKey('gmail_emails'), emailsJson);
+      
+      if (!success) {
+        toast({
+          title: "Storage Warning",
+          description: "Unable to save all email data. Consider clearing old emails.",
+          variant: "destructive"
+        });
+      }
     }
   }, [emails, user]);
 
@@ -138,7 +202,9 @@ export function EmailInboxReal() {
         setEmails(prevEmails => {
           const existingIds = new Set(prevEmails.map(e => e.id));
           const newEmails = enhancedEmails.filter(e => !existingIds.has(e.id));
-          return [...newEmails, ...prevEmails];
+          const combined = [...newEmails, ...prevEmails];
+          // Keep only the most recent emails to prevent storage overflow
+          return combined.slice(0, MAX_EMAILS_TO_STORE);
         });
         
         toast({
@@ -146,17 +212,18 @@ export function EmailInboxReal() {
           description: `Found ${enhancedEmails.length} new emails`,
         });
       } else {
-        // Full refresh
-        setEmails(enhancedEmails);
+        // Full refresh - limit to prevent storage issues
+        const limitedEmails = enhancedEmails.slice(0, MAX_EMAILS_TO_STORE);
+        setEmails(limitedEmails);
         
         toast({
           title: "Emails Fetched",
-          description: `Successfully fetched ${enhancedEmails.length} emails`,
+          description: `Successfully fetched ${limitedEmails.length} emails${enhancedEmails.length > MAX_EMAILS_TO_STORE ? ` (limited to ${MAX_EMAILS_TO_STORE} most recent)` : ''}`,
         });
       }
 
       setLastFetchTime(new Date());
-      localStorage.setItem(getUserStorageKey('last_fetch_time'), new Date().toISOString());
+      safeLocalStorageSet(getUserStorageKey('last_fetch_time'), new Date().toISOString());
 
     } catch (error) {
       console.error('Error fetching emails:', error);
@@ -221,15 +288,23 @@ export function EmailInboxReal() {
 
   const clearAllData = () => {
     if (user) {
-      localStorage.removeItem(getUserStorageKey('gmail_script_url'));
-      localStorage.removeItem(getUserStorageKey('gmail_emails'));
-      localStorage.removeItem(getUserStorageKey('last_fetch_time'));
+      const keys = [
+        getUserStorageKey('gmail_script_url'),
+        getUserStorageKey('gmail_emails'),
+        getUserStorageKey('last_fetch_time')
+      ];
+      
+      keys.forEach(key => {
+        localStorage.removeItem(key);
+      });
+      
       setScriptUrl('');
       setEmails([]);
       setLastFetchTime(null);
+      
       toast({
         title: "Data Cleared",
-        description: "All data has been cleared",
+        description: "All email data has been cleared",
       });
     }
   };
@@ -310,7 +385,7 @@ export function EmailInboxReal() {
         ) : (
           <div className="space-y-6">
             {/* Summary */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 Total: {emails.length}
               </Badge>
@@ -320,6 +395,11 @@ export function EmailInboxReal() {
               <Badge variant="outline">
                 General: {generalEmails.length}
               </Badge>
+              {emails.length >= MAX_EMAILS_TO_STORE && (
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                  Limited to {MAX_EMAILS_TO_STORE} most recent
+                </Badge>
+              )}
             </div>
 
             {/* Quote Requests Section */}
