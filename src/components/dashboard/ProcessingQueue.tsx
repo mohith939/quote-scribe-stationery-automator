@@ -138,7 +138,7 @@ Call to confirm order.`
       // Replace placeholders with actual data
       const productList = item.detectedProducts.map(p => p.product).join(', ');
       const productDetails = item.detectedProducts.map(p => 
-        `- ${p.product}: ${p.quantity} units × ₹${p.pricePerUnit || 'TBD'} = ₹${(p.quantity * (p.pricePerUnit || 0)) || 'TBD'}`
+        `- ${p.product}: ${p.quantity} units × ₹${100} = ₹${(p.quantity * 100)}`
       ).join('\n');
       
       const emailSubject = template.subject

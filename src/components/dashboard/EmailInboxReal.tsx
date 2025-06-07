@@ -286,6 +286,15 @@ export function EmailInboxReal() {
     const queueKey = getUserStorageKey('processing_queue');
     const existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
     
+    // Convert classification to detected products format
+    const detectedProducts = email.classification.detectedProduct ? [{
+      product: email.classification.detectedProduct.name,
+      quantity: 1, // Default quantity
+      confidence: email.classification.confidence,
+      productCode: email.classification.detectedProduct.code,
+      brand: email.classification.detectedProduct.description?.split(' - ')[0] || undefined
+    }] : [];
+    
     const queueItem = {
       id: `queue_${Date.now()}_${email.id}`,
       email: {
@@ -300,7 +309,7 @@ export function EmailInboxReal() {
         name: extractSenderName(email.from),
         email: email.from.match(/<(.+)>/)?.[1] || email.from
       },
-      detectedProducts: email.classification.detectedProducts || [],
+      detectedProducts,
       status: 'pending' as const,
       dateAdded: new Date().toISOString()
     };
