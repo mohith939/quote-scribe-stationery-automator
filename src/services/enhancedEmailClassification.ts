@@ -1,5 +1,15 @@
-
 import { EmailMessage, Product } from "@/types";
+
+export interface EmailClassification {
+  isQuoteRequest: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  detectedProduct?: {
+    name: string;
+    code: string;
+    description?: string;
+  };
+  reasoning: string;
+}
 
 export interface EnhancedEmailClassification {
   isQuoteRequest: boolean;
