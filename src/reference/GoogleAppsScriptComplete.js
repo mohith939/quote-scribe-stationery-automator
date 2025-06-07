@@ -25,27 +25,15 @@ const CONFIG = {
   maxEmailsToFetch: 100
 };
 
-// FIXED: Handle OPTIONS requests for CORS preflight with proper headers
+// Simplified: Handle OPTIONS requests for CORS preflight
 function doOptions(e) {
-  return ContentService
-    .createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-    .setHeader('Access-Control-Max-Age', '86400');
+  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
 }
 
-// FIXED: Proper CORS response creation with all required headers
+// Simplified: Return JSON response without CORS headers
 function createCORSResponse(data) {
   const jsonData = typeof data === 'string' ? data : JSON.stringify(data);
-  
-  return ContentService
-    .createTextOutput(jsonData)
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  return ContentService.createTextOutput(jsonData).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
@@ -89,31 +77,48 @@ function doGet(e) {
   }
 }
 
+// Custom function to parse URL-encoded form data
+function parseQueryString(query) {
+  const params = {};
+  const pairs = query.split('&');
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i].split('=');
+    const key = decodeURIComponent(pair[0].replace(/\+/g, ' '));
+    const value = decodeURIComponent((pair[1] || '').replace(/\+/g, ' '));
+    params[key] = value;
+  }
+  return params;
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
       throw new Error('No POST data received');
     }
     
-    const data = JSON.parse(e.postData.contents);
-    const action = data.action;
+    // Parse URL-encoded form data using custom parser
+    const params = parseQueryString(e.postData.contents);
+    const action = params['action'];
     
     Logger.log('doPost called with action: ' + action);
-    Logger.log('POST data: ' + JSON.stringify(data));
+    Logger.log('POST data: ' + e.postData.contents);
     
     let responseData;
     switch (action) {
       case 'markAsRead':
-        responseData = markEmailAsRead(data.emailId);
+        responseData = markEmailAsRead(params['emailId']);
         break;
       case 'sendEmail':
-        responseData = sendQuoteEmail(data.to, data.subject, data.body, data.emailId);
+        responseData = sendQuoteEmail(params['to'], params['subject'], params['body'], params['emailId']);
         break;
       case 'logQuote':
-        responseData = logQuoteToSheet(data.quoteData);
+        // Assuming quoteData is JSON string in a param
+        const quoteDataStr = params['quoteData'];
+        const quoteData = quoteDataStr ? JSON.parse(quoteDataStr) : null;
+        responseData = logQuoteToSheet(quoteData);
         break;
       case 'processEmail':
-        responseData = processEmailById(data.emailId);
+        responseData = processEmailById(params['emailId']);
         break;
       default:
         responseData = {
@@ -121,6 +126,8 @@ function doPost(e) {
           error: 'Unknown action: ' + action
         };
     }
+    
+    Logger.log('Response data: ' + JSON.stringify(responseData));
     
     return createCORSResponse(responseData);
     
