@@ -104,7 +104,8 @@ const setCachedEmails = (emails: EmailMessage[]) => {
 const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
   try {
     // Try to get from localStorage first for quick access
-    const localUrl = localStorage.getItem('google_apps_script_url');
+    const localUrl = localStorage.getItem('google_apps_script_url') || 
+                    localStorage.getItem('gmail_script_url');
     if (localUrl) {
       return localUrl;
     }
@@ -123,7 +124,8 @@ const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
     return data?.script_url || null;
   } catch (error) {
     console.error('Error getting script URL:', error);
-    return localStorage.getItem('google_apps_script_url');
+    return localStorage.getItem('google_apps_script_url') || 
+           localStorage.getItem('gmail_script_url');
   }
 };
 
@@ -133,7 +135,8 @@ const isCorsError = (error: any): boolean => {
   return errorMessage.includes('CORS') || 
          errorMessage.includes('Access-Control-Allow-Origin') ||
          errorMessage.includes('cross-origin') ||
-         errorMessage.includes('preflight');
+         errorMessage.includes('preflight') ||
+         errorMessage.includes('blocked by CORS policy');
 };
 
 const isNetworkError = (error: any): boolean => {
@@ -185,20 +188,27 @@ const parseHtmlError = (htmlText: string): string => {
 // Enhanced error handler with specific CORS guidance
 const handleFetchError = (error: any): string => {
   if (isCorsError(error)) {
-    return `CORS Error: Your Google Apps Script is not properly configured for cross-origin requests. 
+    return `CORS Error: Your Google Apps Script needs proper CORS configuration.
 
 SOLUTION:
 1. Open your Google Apps Script project
-2. Click "Deploy" → "Manage deployments"
-3. Click the edit icon (pencil) on your deployment
-4. Under "Who has access", select "Anyone" (not "Anyone with Google account")
-5. Click "Deploy"
-6. Copy the new URL and update it in settings
+2. Make sure your doGet and doPost functions include these CORS headers:
+   
+   const corsHeaders = {
+     'Access-Control-Allow-Origin': '*',
+     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+     'Access-Control-Allow-Headers': 'Content-Type'
+   };
 
-If still not working:
-- Make sure your script has both doGet() and doPost() functions
-- Check that your script is deployed as a "Web app"
-- Try creating a new deployment instead of updating existing one`;
+3. Return responses with these headers:
+   return ContentService.createTextOutput(JSON.stringify(data))
+     .setMimeType(ContentService.MimeType.JSON)
+     .setHeaders(corsHeaders);
+
+4. Deploy as "Execute as: Me" and "Access: Anyone"
+5. Copy the new URL and update it in settings
+
+The script should handle OPTIONS requests for CORS preflight.`;
   }
   
   if (isNetworkError(error)) {
@@ -221,7 +231,7 @@ SOLUTIONS:
 };
 
 // Smart email fetching with quota management and caching
-export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: boolean = false): Promise<EmailMessage[]> => {
+export const fetchUnreadEmails = async (maxEmails: number = 100, forceRefresh: boolean = false): Promise<EmailMessage[]> => {
   try {
     // Check quota first
     const quotaCheck = canMakeApiCall();
@@ -300,33 +310,35 @@ export const fetchUnreadEmails = async (maxEmails: number = 10, forceRefresh: bo
       throw new Error(data.error || 'Failed to fetch emails from Apps Script');
     }
     
-    // Map emails to our interface with enhanced processing
-    const emails = (data.emails || []).map((email: any) => ({
-      id: email.id,
-      from: email.from,
-      to: email.to,
-      subject: email.subject,
-      body: email.body,
-      date: email.date,
-      threadId: email.threadId,
-      snippet: email.snippet,
-      attachments: email.attachments || [],
-      hasAttachments: email.hasAttachments || false,
-      htmlBody: email.htmlBody || '',
-      // Enhanced fields with Apps Script processing
-      isQuoteRequest: email.isQuoteRequest || false,
-      products: email.products || [],
-      quantities: email.quantities || [],
-      confidence: email.confidence || 'none',
-      processingStatus: email.processingStatus || 'pending',
-      category: email.category || 'general',
-      processingConfidence: email.processingConfidence || 'none'
-    }));
+    // Map emails to our interface with enhanced processing and sort by date (latest first)
+    const emails = (data.emails || [])
+      .map((email: any) => ({
+        id: email.id,
+        from: email.from,
+        to: email.to,
+        subject: email.subject,
+        body: email.body,
+        date: email.date,
+        threadId: email.threadId,
+        snippet: email.snippet,
+        attachments: email.attachments || [],
+        hasAttachments: email.hasAttachments || false,
+        htmlBody: email.htmlBody || '',
+        // Enhanced fields with Apps Script processing
+        isQuoteRequest: email.isQuoteRequest || false,
+        products: email.products || [],
+        quantities: email.quantities || [],
+        confidence: email.confidence || 'none',
+        processingStatus: email.processingStatus || 'pending',
+        category: email.category || 'general',
+        processingConfidence: email.processingConfidence || 'none'
+      }))
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort latest first
 
     // Cache the results
     setCachedEmails(emails);
 
-    console.log(`Successfully fetched ${emails.length} emails`);
+    console.log(`Successfully fetched ${emails.length} emails (sorted latest first)`);
     return emails;
     
   } catch (error) {

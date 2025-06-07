@@ -53,8 +53,11 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       customerEmail: item.customerInfo.email,
       emailSubject: item.email.subject,
       detectedProducts: item.detectedProducts,
-      originalEmail: item.email.body
+      originalEmail: item.email.body,
+      emailId: item.id
     };
+
+    console.log('Passing quote data to templates:', quoteData);
 
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
@@ -137,9 +140,10 @@ Call to confirm order.`
       
       // Replace placeholders with actual data
       const productList = item.detectedProducts.map(p => p.product).join(', ');
-      const productDetails = item.detectedProducts.map(p => 
-        `- ${p.product}: ${p.quantity} units × ₹${100} = ₹${(p.quantity * 100)}`
-      ).join('\n');
+      const productDetails = item.detectedProducts.map(p => {
+        const price = 100; // Default price, you can make this dynamic
+        return `- ${p.product}: ${p.quantity} units × ₹${price} = ₹${(p.quantity * price)}`;
+      }).join('\n');
       
       const emailSubject = template.subject
         .replace('{original_subject}', item.email.subject)
@@ -151,11 +155,19 @@ Call to confirm order.`
         .replace('{product_details}', productDetails)
         .replace('{date}', new Date().toLocaleDateString());
 
-      // Send email via Google Apps Script
-      const scriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
+      // Get Google Apps Script URL
+      const scriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url')) || 
+                       localStorage.getItem('google_apps_script_url');
+      
       if (!scriptUrl) {
-        throw new Error('Google Apps Script URL not configured');
+        throw new Error('Google Apps Script URL not configured. Please check your settings.');
       }
+
+      console.log('Sending email with data:', {
+        to: item.customerInfo.email,
+        subject: emailSubject,
+        body: emailBody
+      });
 
       const response = await fetch(scriptUrl, {
         method: 'POST',
@@ -163,16 +175,16 @@ Call to confirm order.`
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          action: 'sendReply',
+          action: 'sendEmail',
           to: item.customerInfo.email,
           subject: emailSubject,
           body: emailBody,
-          originalMessageId: item.email.id
+          emailId: item.email.id
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
+        throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -184,7 +196,7 @@ Call to confirm order.`
       handleCompleteQuote(item.id);
       
       toast({
-        title: "Response Sent",
+        title: "Response Sent Successfully",
         description: `Email response sent to ${item.customerInfo.name}`,
       });
 
@@ -192,7 +204,7 @@ Call to confirm order.`
       console.error('Error sending response:', error);
       toast({
         title: "Send Failed",
-        description: error instanceof Error ? error.message : "Failed to send response",
+        description: error instanceof Error ? error.message : "Failed to send response. Check your Google Apps Script configuration.",
         variant: "destructive"
       });
     }
