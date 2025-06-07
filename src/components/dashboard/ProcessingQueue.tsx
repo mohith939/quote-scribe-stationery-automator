@@ -1,8 +1,9 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Edit, Trash2, User, Package, CheckCircle, Send, Mail, Sparkles, ArrowRight } from "lucide-react";
+import { Clock, Edit, Trash2, User, Package, CheckCircle, Send, Mail } from "lucide-react";
 import { ProcessingQueueItem } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -92,18 +93,6 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
 
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
-      
-      // Switch to templates tab
-      const tabsElement = document.querySelector('[data-state="active"][value="processing-queue"]');
-      if (tabsElement) {
-        const templatesTab = document.querySelector('[data-value="quote-templates"]') as HTMLElement;
-        if (templatesTab) {
-          templatesTab.click();
-        }
-      }
-      
-      // Dispatch custom event for tab switching
-      window.dispatchEvent(new CustomEvent('switchToTemplates', { detail: quoteData }));
     }
 
     toast({
@@ -254,12 +243,12 @@ Call to confirm order.`
         throw new Error(result.error || 'Failed to send email');
       }
 
-      // Remove the item from queue after successful send
-      setQueueItems(items => items.filter(queueItem => queueItem.id !== item.id));
+      // Mark as completed
+      handleCompleteQuote(item.id);
       
       toast({
         title: "Response Sent Successfully",
-        description: `Email response sent to ${item.customerInfo.name} and removed from queue`,
+        description: `Email response sent to ${item.customerInfo.name}`,
       });
 
     } catch (error) {
@@ -316,11 +305,11 @@ Call to confirm order.`
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">Pending</Badge>;
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pending</Badge>;
       case 'processing':
-        return <Badge className="bg-blue-100 text-blue-800 border-blue-300">Processing</Badge>;
+        return <Badge className="bg-blue-100 text-blue-800">Processing</Badge>;
       case 'completed':
-        return <Badge className="bg-green-100 text-green-800 border-green-300">Completed</Badge>;
+        return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -329,108 +318,95 @@ Call to confirm order.`
   const getConfidenceBadge = (confidence: string) => {
     switch (confidence) {
       case 'high':
-        return <Badge className="bg-green-100 text-green-800 border-green-300">High Confidence</Badge>;
+        return <Badge className="bg-green-100 text-green-800">High Confidence</Badge>;
       case 'medium':
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">Medium Confidence</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-800">Medium Confidence</Badge>;
       case 'low':
-        return <Badge className="bg-orange-100 text-orange-800 border-orange-300">Low Confidence</Badge>;
+        return <Badge className="bg-orange-100 text-orange-800">Low Confidence</Badge>;
       default:
         return null;
     }
   };
 
   return (
-    <Card className="w-full bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-t-lg">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-            <Clock className="h-6 w-6" />
-          </div>
-          <div className="flex-1">
-            <CardTitle className="text-xl font-bold">Processing Queue</CardTitle>
-            <CardDescription className="text-purple-100">
-              Smart queue for quote generation and automated processing
+    <Card className="w-full">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Clock className="h-5 w-5 text-blue-600" />
+          <div>
+            <CardTitle>Processing Queue</CardTitle>
+            <CardDescription>
+              Emails ready for quote generation and processing (optimized storage)
             </CardDescription>
           </div>
-          <Sparkles className="h-5 w-5 text-purple-200" />
         </div>
       </CardHeader>
       
-      <CardContent className="p-6">
+      <CardContent>
         {queueItems.length === 0 ? (
-          <div className="text-center py-16 text-slate-500">
-            <div className="mx-auto w-24 h-24 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
-              <Clock className="h-10 w-10 text-purple-400" />
-            </div>
-            <h3 className="text-xl font-semibold mb-3 text-slate-700">No items in queue</h3>
-            <p className="text-slate-500 max-w-md mx-auto">
-              Process quote request emails from your inbox to see them here. Items will automatically be removed after sending.
+          <div className="text-center py-12 text-slate-500">
+            <Clock className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+            <h3 className="text-lg font-medium mb-2">No items in queue</h3>
+            <p className="text-sm">
+              Process quote request emails from your inbox to see them here
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 flex-wrap p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
-              <Badge variant="secondary" className="bg-white border-purple-200 text-purple-700 px-3 py-1">
-                <Package className="h-3 w-3 mr-1" />
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 {queueItems.length} Item{queueItems.length !== 1 ? 's' : ''} in Queue
               </Badge>
               {queueItems.length >= MAX_QUEUE_ITEMS && (
-                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1">
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
                   Queue limit reached (max {MAX_QUEUE_ITEMS})
                 </Badge>
               )}
             </div>
             
-            <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-3 max-h-96 overflow-y-auto">
               {queueItems.map((item) => (
-                <div key={item.id} className="bg-white border border-purple-200 rounded-xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-[1.01] hover:border-purple-300">
-                  <div className="flex items-start justify-between mb-4">
+                <div key={item.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="p-1.5 bg-purple-100 rounded-lg">
-                          <User className="h-4 w-4 text-purple-600" />
-                        </div>
-                        <span className="font-bold text-purple-900">
+                      <div className="flex items-center gap-2 mb-2">
+                        <User className="h-4 w-4 text-slate-400" />
+                        <span className="font-medium text-slate-900">
                           {item.customerInfo.name}
                         </span>
                         <span className="text-slate-500 text-sm">({item.customerInfo.email})</span>
                         {getStatusBadge(item.status)}
                       </div>
-                      <h3 className="font-bold text-slate-900 mb-2 text-lg">
+                      <h3 className="font-semibold text-slate-900 mb-1">
                         {item.email.subject}
                       </h3>
                     </div>
-                    <div className="text-sm text-slate-500 ml-4 flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
+                    <div className="text-sm text-slate-500 ml-4">
                       {formatDate(item.dateAdded)}
                     </div>
                   </div>
                   
                   {/* Detected Products */}
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Package className="h-4 w-4 text-purple-600" />
-                      <span className="text-sm font-semibold text-purple-700">Detected Products:</span>
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="h-4 w-4 text-slate-600" />
+                      <span className="text-sm font-medium text-slate-700">Detected Products:</span>
                     </div>
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-2">
                       {item.detectedProducts.map((product, index) => (
-                        <div key={index} className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-lg border border-purple-200">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-semibold text-purple-900">{product.product}</span>
-                              {product.productCode && (
-                                <span className="text-purple-600 ml-2">({product.productCode})</span>
-                              )}
-                              {product.brand && (
-                                <span className="text-slate-600 ml-2">- {product.brand}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="border-purple-300 text-purple-700">
-                                Qty: {product.quantity}
-                              </Badge>
-                              {getConfidenceBadge(product.confidence)}
-                            </div>
+                        <div key={index} className="bg-slate-50 p-2 rounded flex items-center justify-between">
+                          <div>
+                            <span className="font-medium">{product.product}</span>
+                            {product.productCode && (
+                              <span className="text-slate-500 ml-2">({product.productCode})</span>
+                            )}
+                            {product.brand && (
+                              <span className="text-slate-600 ml-2">- {product.brand}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">Qty: {product.quantity}</Badge>
+                            {getConfidenceBadge(product.confidence)}
                           </div>
                         </div>
                       ))}
@@ -438,24 +414,20 @@ Call to confirm order.`
                   </div>
 
                   {/* Email Preview */}
-                  <div className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg mb-4 border border-slate-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Mail className="h-4 w-4 text-slate-500" />
-                      <span className="font-medium text-slate-700">Email Preview</span>
-                    </div>
-                    <p className="leading-relaxed">{item.email.snippet || item.email.body?.substring(0, 150) + '...'}</p>
+                  <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-3">
+                    <p>{item.email.snippet || item.email.body?.substring(0, 150) + '...'}</p>
                   </div>
                   
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                    <Badge variant="outline" className="text-xs border-slate-300 text-slate-600">
-                      ID: {item.id.split('_')[1]}
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      ID: {item.id}
                     </Badge>
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleRemoveItem(item.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
                         Remove
@@ -466,7 +438,7 @@ Call to confirm order.`
                             variant="outline"
                             size="sm"
                             onClick={() => handleSendResponse(item)}
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
                           >
                             <Mail className="h-4 w-4 mr-1" />
                             Send Response
@@ -475,7 +447,6 @@ Call to confirm order.`
                             variant="outline"
                             size="sm"
                             onClick={() => handleCompleteQuote(item.id)}
-                            className="border-blue-200 text-blue-600 hover:bg-blue-50"
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
                             Mark Complete
@@ -483,11 +454,10 @@ Call to confirm order.`
                           <Button
                             size="sm"
                             onClick={() => handleEditQuote(item)}
-                            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 shadow-lg"
+                            className="bg-blue-600 hover:bg-blue-700"
                           >
                             <Edit className="h-4 w-4 mr-1" />
                             Edit Quote
-                            <ArrowRight className="h-4 w-4 ml-1" />
                           </Button>
                         </>
                       )}

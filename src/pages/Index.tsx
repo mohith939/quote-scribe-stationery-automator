@@ -5,36 +5,15 @@ import { ProcessingQueue } from "@/components/dashboard/ProcessingQueue";
 import { QuoteTemplates } from "@/components/dashboard/QuoteTemplates";
 import { QuoteHistory } from "@/components/dashboard/QuoteHistory";
 import { ProductCatalog } from "@/components/dashboard/ProductCatalog";
-import { GoogleAppsScriptConnection } from "@/components/dashboard/GoogleAppsScriptConnection";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("email-inbox");
-  const [quoteData, setQuoteData] = useState<any>(null);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
   };
-
-  const handleSwitchToTemplates = (data: any) => {
-    setQuoteData(data);
-    setActiveTab("quote-templates");
-  };
-
-  // Listen for template switching events
-  useEffect(() => {
-    const handleSwitchToTemplates = (event: CustomEvent) => {
-      setQuoteData(event.detail);
-      setActiveTab("quote-templates");
-    };
-
-    window.addEventListener('switchToTemplates', handleSwitchToTemplates as EventListener);
-    
-    return () => {
-      window.removeEventListener('switchToTemplates', handleSwitchToTemplates as EventListener);
-    };
-  }, []);
 
   return (
     <MainLayout activeTab={activeTab} onTabChange={handleTabChange}>
@@ -42,7 +21,7 @@ const Index = () => {
         <EmailInboxReal />
       </TabsContent>
       <TabsContent value="processing-queue" className="mt-0">
-        <ProcessingQueue onSwitchToTemplates={handleSwitchToTemplates} />
+        <ProcessingQueue />
       </TabsContent>
       <TabsContent value="quote-templates" className="mt-0">
         <QuoteTemplates />
@@ -52,9 +31,6 @@ const Index = () => {
       </TabsContent>
       <TabsContent value="product-catalog" className="mt-0">
         <ProductCatalog />
-      </TabsContent>
-      <TabsContent value="google-apps-script" className="mt-0">
-        <GoogleAppsScriptConnection />
       </TabsContent>
     </MainLayout>
   );

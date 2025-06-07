@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send, Download, FileText, Eye, EyeOff, Sparkles } from "lucide-react";
+import { Mail, User, Clock, Send, Download, FileText } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { EmailRefreshButton } from "./EmailRefreshButton";
 import { EmailClassificationBadge } from "./EmailClassificationBadge";
-import { GoogleAppsScriptConnection } from "./GoogleAppsScriptConnection";
 import { classifyEmail, getDisplayText, EmailClassification } from "@/services/emailClassificationService";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -100,6 +101,7 @@ export function EmailInboxReal() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [emails, setEmails] = useState<EnhancedEmailMessage[]>([]);
+  const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
   const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
@@ -129,6 +131,11 @@ export function EmailInboxReal() {
   // Load persisted data on component mount
   useEffect(() => {
     if (user) {
+      const savedScriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
+      if (savedScriptUrl) {
+        setScriptUrl(savedScriptUrl);
+      }
+
       const savedEmails = localStorage.getItem(getUserStorageKey('gmail_emails'));
       if (savedEmails) {
         try {
@@ -154,19 +161,13 @@ export function EmailInboxReal() {
     }
   }, [user, products]);
 
-  // Listen for refresh events from GoogleAppsScriptConnection
-  useEffect(() => {
-    const handleRefresh = () => {
-      fetchEmails(true);
-    };
-
-    window.addEventListener('refreshEmails', handleRefresh);
-    return () => {
-      window.removeEventListener('refreshEmails', handleRefresh);
-    };
-  }, []);
-
   // Save data whenever it changes
+  useEffect(() => {
+    if (user && scriptUrl) {
+      safeLocalStorageSet(getUserStorageKey('gmail_script_url'), scriptUrl);
+    }
+  }, [scriptUrl, user]);
+
   useEffect(() => {
     if (user && emails.length > 0) {
       const compressedEmails = compressEmails(emails);
@@ -184,12 +185,10 @@ export function EmailInboxReal() {
   }, [emails, user]);
 
   const fetchEmails = async (incremental = false) => {
-    const scriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
-    
-    if (!scriptUrl?.trim()) {
+    if (!scriptUrl.trim()) {
       toast({
-        title: "Not Connected",
-        description: "Please connect your Google Apps Script first",
+        title: "URL Required",
+        description: "Please enter your Google Apps Script URL",
         variant: "destructive"
       });
       return;
@@ -198,7 +197,7 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      let url = `${scriptUrl}?action=getAllUnreadEmails&maxResults=50&_=${Date.now()}`;
+      let url = `${scriptUrl}?action=getAllUnreadEmails&maxResults=50&_=${Date.now()}`; // Reduced to 50 emails
       
       if (incremental && lastFetchTime) {
         const timestamp = lastFetchTime.toISOString();
@@ -374,7 +373,6 @@ export function EmailInboxReal() {
 
   const handleDownloadAttachment = async (email: EnhancedEmailMessage, attachment: any) => {
     try {
-      const scriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
       const response = await fetch(`${scriptUrl}?action=downloadAttachment&messageId=${email.id}&attachmentId=${attachment.attachmentId}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -399,299 +397,307 @@ export function EmailInboxReal() {
     }
   };
 
+  const clearAllData = () => {
+    if (user) {
+      const keys = [
+        getUserStorageKey('gmail_script_url'),
+        getUserStorageKey('gmail_emails'),
+        getUserStorageKey('last_fetch_time'),
+        getUserStorageKey('processing_queue')
+      ];
+      
+      keys.forEach(key => {
+        localStorage.removeItem(key);
+      });
+      
+      setScriptUrl('');
+      setEmails([]);
+      setLastFetchTime(null);
+      
+      toast({
+        title: "Data Cleared",
+        description: "All email data has been cleared",
+      });
+    }
+  };
+
+  // Separate emails by classification
   const quoteEmails = emails.filter(email => email.classification.isQuoteRequest);
   const generalEmails = emails.filter(email => !email.classification.isQuoteRequest);
 
   return (
-    <div className="space-y-6">
-      {/* Google Apps Script Connection */}
-      <GoogleAppsScriptConnection />
-
-      {/* Main Email Inbox */}
-      <Card className="w-full bg-gradient-to-br from-slate-50 to-gray-50 border-slate-200 shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                <Mail className="h-6 w-6" />
-              </div>
-              <div>
-                <CardTitle className="text-xl font-bold">Smart Email Inbox</CardTitle>
-                <CardDescription className="text-blue-100">
-                  AI-powered email classification with modern interface
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <EmailRefreshButton 
-                onRefresh={fetchEmails}
-                isLoading={isLoading}
-                disabled={false}
-              />
-              <Sparkles className="h-5 w-5 text-blue-200" />
+    <Card className="w-full">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-blue-600" />
+            <div>
+              <CardTitle>Email Inbox</CardTitle>
+              <CardDescription>Manage your emails with automatic classification (optimized storage)</CardDescription>
             </div>
           </div>
-        </CardHeader>
-        
-        <CardContent className="p-6">
-          {emails.length === 0 && !isLoading ? (
-            <div className="text-center py-16 text-slate-500">
-              <div className="mx-auto w-24 h-24 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
-                <Mail className="h-10 w-10 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-3 text-slate-700">No emails loaded</h3>
-              <p className="text-slate-500 max-w-md mx-auto">
-                Connect your Google Apps Script and fetch emails to get started with automated quote processing
-              </p>
+          <EmailRefreshButton 
+            onRefresh={fetchEmails}
+            isLoading={isLoading}
+            disabled={!scriptUrl.trim()}
+          />
+        </div>
+      </CardHeader>
+      
+      <CardContent>
+        <div className="space-y-4 mb-6">
+          <div>
+            <Label htmlFor="scriptUrl">Google Apps Script URL</Label>
+            <div className="flex gap-2 mt-1">
+              <Input
+                id="scriptUrl"
+                value={scriptUrl}
+                onChange={(e) => setScriptUrl(e.target.value)}
+                placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
+                className="flex-1"
+              />
+              <Button 
+                onClick={() => fetchEmails(false)}
+                disabled={isLoading || !scriptUrl.trim()}
+              >
+                {isLoading ? 'Fetching...' : 'Fetch All'}
+              </Button>
             </div>
-          ) : isLoading ? (
-            <div className="text-center py-16 text-slate-500">
-              <div className="mx-auto w-24 h-24 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
-                <Mail className="h-10 w-10 text-blue-400 animate-pulse" />
-              </div>
-              <h3 className="text-xl font-semibold mb-3 text-slate-700">Fetching emails...</h3>
-              <p className="text-slate-500">Loading your messages with AI classification</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Summary */}
-              <div className="flex items-center gap-4 flex-wrap p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-                <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 px-3 py-1">
-                  <Mail className="h-3 w-3 mr-1" />
-                  Total: {emails.length}
-                </Badge>
-                <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-3 py-1">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  Quote Requests: {quoteEmails.length}
-                </Badge>
-                <Badge variant="outline" className="border-slate-300 text-slate-600 px-3 py-1">
-                  General: {generalEmails.length}
-                </Badge>
-                {emails.length >= MAX_EMAILS_TO_STORE && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1">
-                    Limited to {MAX_EMAILS_TO_STORE} most recent
-                  </Badge>
-                )}
-              </div>
-
-              {/* Quote Requests Section */}
-              {quoteEmails.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-1 bg-gradient-to-b from-green-500 to-emerald-500 rounded-full"></div>
-                    <h3 className="text-xl font-bold text-green-700">Quote Requests</h3>
-                    <Badge className="bg-green-100 text-green-800">{quoteEmails.length}</Badge>
-                  </div>
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {quoteEmails.map((email) => (
-                      <div key={email.id} className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-[1.01]">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2">
-                              <div className="p-1.5 bg-green-100 rounded-lg">
-                                <User className="h-4 w-4 text-green-600" />
-                              </div>
-                              <span className="font-semibold text-green-900 truncate">
-                                {extractSenderName(email.from)}
-                              </span>
-                              <EmailClassificationBadge
-                                classification={email.classification}
-                                onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
-                                emailId={email.id}
-                              />
-                            </div>
-                            <h3 className="font-bold text-slate-900 mb-2 text-lg">
-                              {email.subject}
-                            </h3>
-                            <div className="text-sm font-medium text-green-700 mb-2">
-                              {getDisplayText(email, email.classification)}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-slate-500 ml-4">
-                            <Clock className="h-4 w-4" />
-                            {formatDate(email.date)}
-                          </div>
-                        </div>
-                        
-                        <div className="bg-white/70 backdrop-blur-sm border border-green-200 rounded-lg p-4 mb-4">
-                          <p className="text-slate-700 leading-relaxed">
-                            {expandedEmails.has(email.id) 
-                              ? email.body 
-                              : `${email.body?.substring(0, 200)}...`
-                            }
-                          </p>
-                          {email.body && email.body.length > 200 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleEmailExpansion(email.id)}
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50 mt-2 p-0 h-auto"
-                            >
-                              {expandedEmails.has(email.id) ? (
-                                <><EyeOff className="h-4 w-4 mr-1" /> Show Less</>
-                              ) : (
-                                <><Eye className="h-4 w-4 mr-1" /> Show More</>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Attachments */}
-                        {email.attachments && email.attachments.length > 0 && (
-                          <div className="mb-4">
-                            <div className="text-sm font-medium text-slate-600 mb-2 flex items-center gap-1">
-                              <FileText className="h-4 w-4" />
-                              Attachments ({email.attachments.length})
-                            </div>
-                            <div className="space-y-2">
-                              {email.attachments.map((attachment, index) => (
-                                <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-green-200 shadow-sm">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-slate-100 rounded">
-                                      <FileText className="h-4 w-4 text-slate-500" />
-                                    </div>
-                                    <div>
-                                      <span className="text-sm font-medium text-slate-700">{attachment.filename}</span>
-                                      <div className="text-xs text-slate-500">
-                                        {(attachment.size / 1024).toFixed(1)}KB
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDownloadAttachment(email, attachment)}
-                                    className="border-green-200 text-green-700 hover:bg-green-50"
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center justify-end">
-                          <Button
-                            size="lg"
-                            onClick={() => handleProcessQuote(email)}
-                            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-6 py-2 shadow-lg"
-                          >
-                            <Send className="h-4 w-4 mr-2" />
-                            Process Quote
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* General Emails Section */}
-              {generalEmails.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-1 bg-gradient-to-b from-slate-400 to-slate-600 rounded-full"></div>
-                    <h3 className="text-xl font-bold text-slate-700">General Emails</h3>
-                    <Badge variant="outline" className="border-slate-300 text-slate-600">{generalEmails.length}</Badge>
-                  </div>
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {generalEmails.map((email) => (
-                      <div key={email.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-md transition-all duration-200 hover:border-slate-300">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2">
-                              <div className="p-1.5 bg-slate-100 rounded-lg">
-                                <User className="h-4 w-4 text-slate-600" />
-                              </div>
-                              <span className="font-semibold text-slate-900 truncate">
-                                {extractSenderName(email.from)}
-                              </span>
-                              <EmailClassificationBadge
-                                classification={email.classification}
-                                onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
-                                emailId={email.id}
-                              />
-                            </div>
-                            <h3 className="font-bold text-slate-900 mb-2">
-                              {email.subject}
-                            </h3>
-                            <div className="text-sm text-slate-600 mb-2">
-                              {getDisplayText(email, email.classification)}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-slate-500 ml-4">
-                            <Clock className="h-4 w-4" />
-                            {formatDate(email.date)}
-                          </div>
-                        </div>
-                        
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
-                          <p className="text-slate-700 leading-relaxed">
-                            {expandedEmails.has(email.id) 
-                              ? email.body 
-                              : `${email.body?.substring(0, 200)}...`
-                            }
-                          </p>
-                          {email.body && email.body.length > 200 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleEmailExpansion(email.id)}
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 mt-2 p-0 h-auto"
-                            >
-                              {expandedEmails.has(email.id) ? (
-                                <><EyeOff className="h-4 w-4 mr-1" /> Show Less</>
-                              ) : (
-                                <><Eye className="h-4 w-4 mr-1" /> Show More</>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Attachments */}
-                        {email.attachments && email.attachments.length > 0 && (
-                          <div className="mb-4">
-                            <div className="text-sm font-medium text-slate-600 mb-2 flex items-center gap-1">
-                              <FileText className="h-4 w-4" />
-                              Attachments ({email.attachments.length})
-                            </div>
-                            <div className="space-y-2">
-                              {email.attachments.map((attachment, index) => (
-                                <div key={index} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-slate-200 rounded">
-                                      <FileText className="h-4 w-4 text-slate-500" />
-                                    </div>
-                                    <div>
-                                      <span className="text-sm font-medium text-slate-700">{attachment.filename}</span>
-                                      <div className="text-xs text-slate-500">
-                                        {(attachment.size / 1024).toFixed(1)}KB
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDownloadAttachment(email, attachment)}
-                                    className="border-slate-300 text-slate-600 hover:bg-slate-100"
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          </div>
+          
+          {scriptUrl && (
+            <div className="flex gap-2">
+              <Badge variant="secondary" className="bg-green-50 text-green-700">
+                Apps Script URL Configured
+              </Badge>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                Optimized Storage ({MAX_EMAILS_TO_STORE} emails max)
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllData}
+                className="text-red-600 hover:text-red-700"
+              >
+                Clear Data
+              </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+        {emails.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-slate-500">
+            <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+            <h3 className="text-lg font-medium mb-2">No emails loaded</h3>
+            <p className="text-sm">Enter your Apps Script URL and click "Fetch All" to load your emails</p>
+          </div>
+        ) : isLoading ? (
+          <div className="text-center py-12 text-slate-500">
+            <Mail className="h-12 w-12 mx-auto mb-4 text-slate-300 animate-pulse" />
+            <h3 className="text-lg font-medium mb-2">Fetching emails...</h3>
+            <p className="text-sm">Loading your messages</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                Total: {emails.length}
+              </Badge>
+              <Badge className="bg-green-100 text-green-800">
+                Quote Requests: {quoteEmails.length}
+              </Badge>
+              <Badge variant="outline">
+                General: {generalEmails.length}
+              </Badge>
+              {emails.length >= MAX_EMAILS_TO_STORE && (
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                  Limited to {MAX_EMAILS_TO_STORE} most recent
+                </Badge>
+              )}
+            </div>
+
+            {/* Quote Requests Section */}
+            {quoteEmails.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-green-700">Quote Requests</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {quoteEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 bg-green-50 hover:bg-green-100 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
+                            <EmailClassificationBadge
+                              classification={email.classification}
+                              onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
+                              emailId={email.id}
+                            />
+                          </div>
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm font-medium text-green-700">
+                            {getDisplayText(email, email.classification)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
+                          {formatDate(email.date)}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-slate-600 bg-white p-2 rounded mb-2">
+                        <p>
+                          {expandedEmails.has(email.id) 
+                            ? email.body 
+                            : `${email.body?.substring(0, 150)}...`
+                          }
+                        </p>
+                        {email.body && email.body.length > 150 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEmailExpansion(email.id)}
+                            className="text-blue-600 p-0 h-auto"
+                          >
+                            {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Attachments */}
+                      {email.attachments && email.attachments.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-xs text-slate-600 mb-1">Attachments:</div>
+                          <div className="space-y-1">
+                            {email.attachments.map((attachment, index) => (
+                              <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-slate-400" />
+                                  <span className="text-sm font-medium">{attachment.filename}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {(attachment.size / 1024).toFixed(1)}KB
+                                  </Badge>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadAttachment(email, attachment)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => handleProcessQuote(email)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <Send className="h-4 w-4 mr-1" />
+                          Process Quote
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* General Emails Section */}
+            {generalEmails.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-slate-700">General Emails</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {generalEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium text-slate-900 truncate">
+                              {extractSenderName(email.from)}
+                            </span>
+                            <EmailClassificationBadge
+                              classification={email.classification}
+                              onReclassify={(isQuote) => handleReclassify(email.id, isQuote)}
+                              emailId={email.id}
+                            />
+                          </div>
+                          <h3 className="font-semibold text-slate-900 mb-1">
+                            {email.subject}
+                          </h3>
+                          <div className="text-sm text-slate-600">
+                            {getDisplayText(email, email.classification)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500 ml-4">
+                          <Clock className="h-4 w-4" />
+                          {formatDate(email.date)}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
+                        <p>
+                          {expandedEmails.has(email.id) 
+                            ? email.body 
+                            : `${email.body?.substring(0, 150)}...`
+                          }
+                        </p>
+                        {email.body && email.body.length > 150 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEmailExpansion(email.id)}
+                            className="text-blue-600 p-0 h-auto"
+                          >
+                            {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Attachments */}
+                      {email.attachments && email.attachments.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-xs text-slate-600 mb-1">Attachments:</div>
+                          <div className="space-y-1">
+                            {email.attachments.map((attachment, index) => (
+                              <div key={index} className="flex items-center justify-between bg-slate-50 p-2 rounded border">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-slate-400" />
+                                  <span className="text-sm font-medium">{attachment.filename}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {(attachment.size / 1024).toFixed(1)}KB
+                                  </Badge>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadAttachment(email, attachment)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
