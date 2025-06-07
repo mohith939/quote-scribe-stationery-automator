@@ -3,12 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, Settings, FileText, Mail, Printer, Palette, Download } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PDFTemplateCustomizer } from "@/components/templates/PDFTemplateCustomizer";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 interface QuoteTemplate {
   id: string;
@@ -51,24 +52,65 @@ const templates: QuoteTemplate[] = [
 
 export function QuoteTemplates() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("formal-business");
   const [outputFormat, setOutputFormat] = useState<'email' | 'pdf' | 'print'>('pdf');
   const [showCustomizer, setShowCustomizer] = useState(false);
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
+  // Create user-specific storage key
+  const getUserStorageKey = (key: string) => {
+    return user ? `${key}_${user.id}` : key;
+  };
+
+  // Load saved template settings
+  useEffect(() => {
+    if (user) {
+      const savedTemplate = localStorage.getItem(getUserStorageKey('selected_template'));
+      const savedFormat = localStorage.getItem(getUserStorageKey('output_format'));
+      
+      if (savedTemplate) {
+        setSelectedTemplateId(savedTemplate);
+      }
+      if (savedFormat) {
+        setOutputFormat(savedFormat as 'email' | 'pdf' | 'print');
+      }
+    }
+  }, [user]);
+
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId);
+    
+    // Save to localStorage for use in processing queue
+    if (user) {
+      localStorage.setItem(getUserStorageKey('selected_template'), templateId);
+    }
+    
     toast({
       title: "Template Selected",
       description: `Switched to ${templates.find(t => t.id === templateId)?.name} template`
     });
   };
 
+  const handleOutputFormatChange = (format: string) => {
+    setOutputFormat(format as 'email' | 'pdf' | 'print');
+    
+    // Save to localStorage
+    if (user) {
+      localStorage.setItem(getUserStorageKey('output_format'), format);
+    }
+  };
+
   const handleSaveSettings = () => {
+    if (user) {
+      localStorage.setItem(getUserStorageKey('selected_template'), selectedTemplateId);
+      localStorage.setItem(getUserStorageKey('output_format'), outputFormat);
+    }
+    
     toast({
       title: "Settings Saved",
-      description: `Template and output format preferences have been saved.`
+      description: `Template and output format preferences have been saved and will be used for email responses.`
     });
   };
 
@@ -146,7 +188,7 @@ export function QuoteTemplates() {
               {/* Output Format Selection */}
               <div className="space-y-3 pt-4 border-t border-slate-200">
                 <Label className="text-sm font-medium text-slate-700">Output Format</Label>
-                <RadioGroup value={outputFormat} onValueChange={(value) => setOutputFormat(value as any)}>
+                <RadioGroup value={outputFormat} onValueChange={handleOutputFormatChange}>
                   <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
                     <RadioGroupItem value="email" id="email" />
                     <Label htmlFor="email" className="flex items-center gap-2 cursor-pointer">
@@ -196,6 +238,9 @@ export function QuoteTemplates() {
                       {outputFormat.toUpperCase()}
                     </Badge>
                     <span className="font-semibold text-slate-800">{selectedTemplate.name}</span>
+                    <Badge className="bg-green-100 text-green-800 ml-auto">
+                      ACTIVE TEMPLATE
+                    </Badge>
                   </div>
 
                   {/* PDF Preview */}
@@ -270,7 +315,7 @@ export function QuoteTemplates() {
                   {/* Features Info */}
                   <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
                     <p className="text-sm text-green-800">
-                      <strong>PDF Features:</strong> Professional formatting, company logo, branded headers, customer details, itemized quotations, terms & conditions, and digital signatures.
+                      <strong>Active Template:</strong> This template will be used automatically when sending responses from the Processing Queue. Changes are saved automatically and reflected immediately.
                     </p>
                   </div>
                 </div>

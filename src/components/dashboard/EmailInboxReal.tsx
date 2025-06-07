@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User, Clock, Send } from "lucide-react";
+import { Mail, User, Clock, Send, Download, FileText } from "lucide-react";
 import { EmailMessage } from "@/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { EmailRefreshButton } from "./EmailRefreshButton";
@@ -16,11 +16,17 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface EnhancedEmailMessage extends EmailMessage {
   classification: EmailClassification;
+  attachments?: Array<{
+    filename: string;
+    mimeType: string;
+    size: number;
+    attachmentId: string;
+  }>;
 }
 
 // Storage utilities with quota management
-const MAX_STORAGE_SIZE = 4 * 1024 * 1024; // 4MB limit (leaving room for other data)
-const MAX_EMAILS_TO_STORE = 100; // Limit number of emails stored
+const MAX_STORAGE_SIZE = 4 * 1024 * 1024; // 4MB limit
+const MAX_EMAILS_TO_STORE = 100; // Store up to 100 emails
 
 const getStorageSize = (data: string): number => {
   return new Blob([data]).size;
@@ -38,14 +44,12 @@ const safeLocalStorageSet = (key: string, value: string): boolean => {
   } catch (error) {
     if (error instanceof DOMException && error.code === 22) {
       console.warn('localStorage quota exceeded, clearing old data');
-      // Try to free up space by removing old email data
       const keys = Object.keys(localStorage);
       keys.forEach(k => {
         if (k.includes('gmail_emails_') || k.includes('last_fetch_time_')) {
           localStorage.removeItem(k);
         }
       });
-      // Try again after cleanup
       try {
         localStorage.setItem(key, value);
         return true;
@@ -60,14 +64,13 @@ const safeLocalStorageSet = (key: string, value: string): boolean => {
 };
 
 const compressEmails = (emails: EnhancedEmailMessage[]): EnhancedEmailMessage[] => {
-  // Keep only the most recent emails and compress data
   return emails
     .slice(0, MAX_EMAILS_TO_STORE)
     .map(email => ({
       ...email,
-      // Truncate body to save space
-      body: email.body?.substring(0, 500) || '',
-      htmlBody: '', // Remove HTML body to save space
+      // Keep full body for viewing
+      body: email.body || '',
+      htmlBody: email.htmlBody || '',
     }));
 };
 
@@ -78,6 +81,7 @@ export function EmailInboxReal() {
   const [scriptUrl, setScriptUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
+  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
 
   // Fetch products for classification
   const { data: products = [] } = useQuery({
@@ -113,15 +117,15 @@ export function EmailInboxReal() {
       if (savedEmails) {
         try {
           const parsedEmails = JSON.parse(savedEmails);
-          // Re-classify emails with current products
           const enhancedEmails = parsedEmails.map((email: EmailMessage) => ({
             ...email,
             classification: classifyEmail(email, products)
           }));
+          // Sort by date descending (newest first)
+          enhancedEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           setEmails(enhancedEmails);
         } catch (error) {
           console.error('Error parsing saved emails:', error);
-          // Clear corrupted data
           localStorage.removeItem(getUserStorageKey('gmail_emails'));
         }
       }
@@ -169,9 +173,8 @@ export function EmailInboxReal() {
     setIsLoading(true);
     
     try {
-      let url = `${scriptUrl}?action=getAllUnreadEmails&_=${Date.now()}`;
+      let url = `${scriptUrl}?action=getAllUnreadEmails&maxResults=100&_=${Date.now()}`;
       
-      // For incremental fetch, add timestamp parameter
       if (incremental && lastFetchTime) {
         const timestamp = lastFetchTime.toISOString();
         url += `&since=${encodeURIComponent(timestamp)}`;
@@ -194,16 +197,17 @@ export function EmailInboxReal() {
       // Classify and enhance emails
       const enhancedEmails: EnhancedEmailMessage[] = fetchedEmails.map((email: EmailMessage) => ({
         ...email,
-        classification: classifyEmail(email, products)
+        classification: classifyEmail(email, products),
+        attachments: email.attachments || []
       }));
       
       if (incremental) {
-        // For incremental updates, merge with existing emails
         setEmails(prevEmails => {
           const existingIds = new Set(prevEmails.map(e => e.id));
           const newEmails = enhancedEmails.filter(e => !existingIds.has(e.id));
           const combined = [...newEmails, ...prevEmails];
-          // Keep only the most recent emails to prevent storage overflow
+          // Sort by date descending (newest first)
+          combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           return combined.slice(0, MAX_EMAILS_TO_STORE);
         });
         
@@ -212,7 +216,8 @@ export function EmailInboxReal() {
           description: `Found ${enhancedEmails.length} new emails`,
         });
       } else {
-        // Full refresh - limit to prevent storage issues
+        // Sort by date descending (newest first)
+        enhancedEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const limitedEmails = enhancedEmails.slice(0, MAX_EMAILS_TO_STORE);
         setEmails(limitedEmails);
         
@@ -277,13 +282,78 @@ export function EmailInboxReal() {
   };
 
   const handleProcessQuote = (email: EnhancedEmailMessage) => {
+    // Add to processing queue by storing in localStorage
+    const queueKey = getUserStorageKey('processing_queue');
+    const existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+    
+    const queueItem = {
+      id: `queue_${Date.now()}_${email.id}`,
+      email: {
+        id: email.id,
+        from: email.from,
+        subject: email.subject,
+        body: email.body,
+        date: email.date,
+        snippet: email.snippet || email.body?.substring(0, 150) + '...'
+      },
+      customerInfo: {
+        name: extractSenderName(email.from),
+        email: email.from.match(/<(.+)>/)?.[1] || email.from
+      },
+      detectedProducts: email.classification.detectedProducts || [],
+      status: 'pending' as const,
+      dateAdded: new Date().toISOString()
+    };
+    
+    const updatedQueue = [queueItem, ...existingQueue];
+    localStorage.setItem(queueKey, JSON.stringify(updatedQueue));
+    
     toast({
       title: "Email Added to Processing Queue",
       description: `Email from ${extractSenderName(email.from)} moved to processing queue`,
     });
     
+    // Remove from current list
     const remainingEmails = emails.filter(e => e.id !== email.id);
     setEmails(remainingEmails);
+  };
+
+  const toggleEmailExpansion = (emailId: string) => {
+    setExpandedEmails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(emailId)) {
+        newSet.delete(emailId);
+      } else {
+        newSet.add(emailId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDownloadAttachment = async (email: EnhancedEmailMessage, attachment: any) => {
+    try {
+      const response = await fetch(`${scriptUrl}?action=downloadAttachment&messageId=${email.id}&attachmentId=${attachment.attachmentId}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = attachment.filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Download Started",
+        description: `Downloading ${attachment.filename}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "Unable to download attachment",
+        variant: "destructive"
+      });
+    }
   };
 
   const clearAllData = () => {
@@ -436,8 +506,50 @@ export function EmailInboxReal() {
                       </div>
                       
                       <div className="text-sm text-slate-600 bg-white p-2 rounded mb-2">
-                        <p>{email.body?.substring(0, 150)}...</p>
+                        <p>
+                          {expandedEmails.has(email.id) 
+                            ? email.body 
+                            : `${email.body?.substring(0, 150)}...`
+                          }
+                        </p>
+                        {email.body && email.body.length > 150 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEmailExpansion(email.id)}
+                            className="text-blue-600 p-0 h-auto"
+                          >
+                            {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
+                          </Button>
+                        )}
                       </div>
+
+                      {/* Attachments */}
+                      {email.attachments && email.attachments.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-xs text-slate-600 mb-1">Attachments:</div>
+                          <div className="space-y-1">
+                            {email.attachments.map((attachment, index) => (
+                              <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-slate-400" />
+                                  <span className="text-sm font-medium">{attachment.filename}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {(attachment.size / 1024).toFixed(1)}KB
+                                  </Badge>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadAttachment(email, attachment)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="flex items-center justify-end">
                         <Button
@@ -489,8 +601,50 @@ export function EmailInboxReal() {
                       </div>
                       
                       <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
-                        <p>{email.body?.substring(0, 150)}...</p>
+                        <p>
+                          {expandedEmails.has(email.id) 
+                            ? email.body 
+                            : `${email.body?.substring(0, 150)}...`
+                          }
+                        </p>
+                        {email.body && email.body.length > 150 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEmailExpansion(email.id)}
+                            className="text-blue-600 p-0 h-auto"
+                          >
+                            {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
+                          </Button>
+                        )}
                       </div>
+
+                      {/* Attachments */}
+                      {email.attachments && email.attachments.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-xs text-slate-600 mb-1">Attachments:</div>
+                          <div className="space-y-1">
+                            {email.attachments.map((attachment, index) => (
+                              <div key={index} className="flex items-center justify-between bg-slate-50 p-2 rounded border">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-slate-400" />
+                                  <span className="text-sm font-medium">{attachment.filename}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {(attachment.size / 1024).toFixed(1)}KB
+                                  </Badge>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadAttachment(email, attachment)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

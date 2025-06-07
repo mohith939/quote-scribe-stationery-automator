@@ -1,11 +1,12 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Edit, Trash2, User, Package, CheckCircle } from "lucide-react";
+import { Clock, Edit, Trash2, User, Package, CheckCircle, Send, Mail } from "lucide-react";
 import { ProcessingQueueItem } from "@/types";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 interface ProcessingQueueProps {
   onSwitchToTemplates?: (quoteData: any) => void;
@@ -13,10 +14,40 @@ interface ProcessingQueueProps {
 
 export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [queueItems, setQueueItems] = useState<ProcessingQueueItem[]>([]);
 
+  // Create user-specific storage key
+  const getUserStorageKey = (key: string) => {
+    return user ? `${key}_${user.id}` : key;
+  };
+
+  // Load queue items from localStorage
+  useEffect(() => {
+    if (user) {
+      const queueKey = getUserStorageKey('processing_queue');
+      const savedQueue = localStorage.getItem(queueKey);
+      if (savedQueue) {
+        try {
+          const parsedQueue = JSON.parse(savedQueue);
+          setQueueItems(parsedQueue);
+        } catch (error) {
+          console.error('Error parsing processing queue:', error);
+          localStorage.removeItem(queueKey);
+        }
+      }
+    }
+  }, [user]);
+
+  // Save queue items to localStorage whenever they change
+  useEffect(() => {
+    if (user && queueItems.length >= 0) {
+      const queueKey = getUserStorageKey('processing_queue');
+      localStorage.setItem(queueKey, JSON.stringify(queueItems));
+    }
+  }, [queueItems, user]);
+
   const handleEditQuote = (item: ProcessingQueueItem) => {
-    // Prepare quote data for template
     const quoteData = {
       customerName: item.customerInfo.name,
       customerEmail: item.customerInfo.email,
@@ -25,7 +56,6 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       originalEmail: item.email.body
     };
 
-    // Switch to quote templates with prefilled data
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
     }
@@ -34,6 +64,138 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       title: "Redirecting to Quote Templates",
       description: `Opening quote template for ${item.customerInfo.name}`,
     });
+  };
+
+  const handleSendResponse = async (item: ProcessingQueueItem) => {
+    try {
+      // Get selected template from localStorage
+      const templateKey = getUserStorageKey('selected_template');
+      const selectedTemplate = localStorage.getItem(templateKey) || 'formal-business';
+      
+      // Get template content based on selected template
+      const templates = {
+        'formal-business': {
+          subject: 'Re: {original_subject} - Quotation',
+          body: `Dear {customer_name},
+
+Thank you for your inquiry regarding {product_list}.
+
+We are pleased to provide you with the following quotation:
+
+{product_details}
+
+This quotation is valid for 30 days from the date of this email.
+
+Please feel free to contact us if you have any questions or require additional information.
+
+Best regards,
+Your Company Name`
+        },
+        'casual-friendly': {
+          subject: 'Re: {original_subject} - Your Quote',
+          body: `Hi {customer_name}!
+
+Thanks for reaching out about {product_list}. Here's your quote:
+
+{product_details}
+
+This quote is good for 30 days. Let me know if you have any questions!
+
+Cheers,
+Your Team`
+        },
+        'detailed-comprehensive': {
+          subject: 'Re: {original_subject} - Comprehensive Quotation',
+          body: `=== COMPREHENSIVE QUOTATION ===
+
+Customer: {customer_name}
+Date: {date}
+
+Product Details:
+{product_details}
+
+Terms & Conditions:
+- Payment: 50% advance, 50% on delivery
+- Delivery: 7-10 business days
+- Warranty: 1 year manufacturer warranty
+- Validity: 30 days
+
+Best regards,
+Your Company Name`
+        },
+        'simple-quick': {
+          subject: 'Re: {original_subject} - Quick Quote',
+          body: `Quote for {product_list}:
+{product_details}
+
+Valid for 7 days. Ready to ship!
+Call to confirm order.`
+        }
+      };
+
+      const template = templates[selectedTemplate as keyof typeof templates] || templates['formal-business'];
+      
+      // Replace placeholders with actual data
+      const productList = item.detectedProducts.map(p => p.product).join(', ');
+      const productDetails = item.detectedProducts.map(p => 
+        `- ${p.product}: ${p.quantity} units × ₹${p.pricePerUnit || 'TBD'} = ₹${(p.quantity * (p.pricePerUnit || 0)) || 'TBD'}`
+      ).join('\n');
+      
+      const emailSubject = template.subject
+        .replace('{original_subject}', item.email.subject)
+        .replace('{customer_name}', item.customerInfo.name);
+        
+      const emailBody = template.body
+        .replace('{customer_name}', item.customerInfo.name)
+        .replace('{product_list}', productList)
+        .replace('{product_details}', productDetails)
+        .replace('{date}', new Date().toLocaleDateString());
+
+      // Send email via Google Apps Script
+      const scriptUrl = localStorage.getItem(getUserStorageKey('gmail_script_url'));
+      if (!scriptUrl) {
+        throw new Error('Google Apps Script URL not configured');
+      }
+
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sendReply',
+          to: item.customerInfo.email,
+          subject: emailSubject,
+          body: emailBody,
+          originalMessageId: item.email.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send email');
+      }
+
+      // Mark as completed
+      handleCompleteQuote(item.id);
+      
+      toast({
+        title: "Response Sent",
+        description: `Email response sent to ${item.customerInfo.name}`,
+      });
+
+    } catch (error) {
+      console.error('Error sending response:', error);
+      toast({
+        title: "Send Failed",
+        description: error instanceof Error ? error.message : "Failed to send response",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleCompleteQuote = (itemId: string) => {
@@ -191,6 +353,15 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
                       </Button>
                       {item.status !== 'completed' && (
                         <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSendResponse(item)}
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          >
+                            <Mail className="h-4 w-4 mr-1" />
+                            Send Response
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
