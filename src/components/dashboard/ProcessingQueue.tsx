@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,30 +91,14 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
 
     console.log('Passing quote data to templates:', quoteData);
 
-    // Store the quote data for the templates component
-    if (user) {
-      localStorage.setItem(getUserStorageKey('current_quote_data'), JSON.stringify(quoteData));
-    }
-
-    // Call the callback to switch to templates
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
-      
-      toast({
-        title: "Redirecting to Quote Templates",
-        description: `Opening quote template for ${item.customerInfo.name}`,
-      });
-    } else {
-      // Fallback: Try to trigger navigation through window events
-      window.dispatchEvent(new CustomEvent('switchToTemplates', { 
-        detail: quoteData 
-      }));
-      
-      toast({
-        title: "Quote Data Prepared",
-        description: `Quote data for ${item.customerInfo.name} is ready. Please switch to Templates tab.`,
-      });
     }
+
+    toast({
+      title: "Redirecting to Quote Templates",
+      description: `Opening quote template for ${item.customerInfo.name}`,
+    });
   };
 
   const handleSendResponse = async (item: ProcessingQueueItem) => {
@@ -222,18 +207,19 @@ Call to confirm order.`
         body: emailBody
       });
 
+      const formData = new URLSearchParams();
+      formData.append('action', 'sendEmail');
+      formData.append('to', item.customerInfo.email);
+      formData.append('subject', emailSubject);
+      formData.append('body', emailBody);
+      formData.append('emailId', item.email.id);
+
       const response = await fetch(scriptUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({
-          action: 'sendEmail',
-          to: item.customerInfo.email,
-          subject: emailSubject,
-          body: emailBody,
-          emailId: item.email.id
-        })
+        body: formData.toString()
       });
 
       console.log('Response status:', response.status);
@@ -242,7 +228,15 @@ Call to confirm order.`
         throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
       }
 
-      const result = await response.json();
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(`Failed to parse JSON response: ${parseError.message}. Response text: ${responseText}`);
+      }
+      
       console.log('Response result:', result);
       
       if (!result.success) {
@@ -264,9 +258,9 @@ Call to confirm order.`
       
       if (error instanceof Error) {
         if (error.message.includes('CORS')) {
-          errorMessage = "CORS error: Please redeploy your Google Apps Script with proper CORS headers.";
+          errorMessage = "CORS error: Please update your Google Apps Script with proper CORS headers.";
         } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is redeployed with CORS fixes.";
+          errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is deployed correctly.";
         } else {
           errorMessage = error.message;
         }
