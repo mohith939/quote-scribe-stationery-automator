@@ -5,6 +5,7 @@ import { ProcessingQueue } from "@/components/dashboard/ProcessingQueue";
 import { QuoteTemplates } from "@/components/dashboard/QuoteTemplates";
 import { QuoteHistory } from "@/components/dashboard/QuoteHistory";
 import { ProductCatalog } from "@/components/dashboard/ProductCatalog";
+import { GoogleAppsScriptConnection } from "@/components/dashboard/GoogleAppsScriptConnection";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useState, useEffect } from "react";
 
@@ -44,13 +45,16 @@ const Index = () => {
         <ProcessingQueue onSwitchToTemplates={handleSwitchToTemplates} />
       </TabsContent>
       <TabsContent value="quote-templates" className="mt-0">
-        <QuoteTemplates initialQuoteData={quoteData} />
+        <QuoteTemplates />
       </TabsContent>
       <TabsContent value="quote-history" className="mt-0">
         <QuoteHistory />
       </TabsContent>
       <TabsContent value="product-catalog" className="mt-0">
         <ProductCatalog />
+      </TabsContent>
+      <TabsContent value="google-apps-script" className="mt-0">
+        <GoogleAppsScriptConnection />
       </TabsContent>
     </MainLayout>
   );
