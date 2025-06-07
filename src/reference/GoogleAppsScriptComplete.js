@@ -1,4 +1,3 @@
-
 /**
  * COMPLETE Google Apps Script for QuoteScribe - FIXED CORS VERSION
  * This version includes proper CORS handling for all requests including preflight
