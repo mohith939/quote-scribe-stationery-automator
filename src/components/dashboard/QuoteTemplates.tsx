@@ -57,39 +57,18 @@ export function QuoteTemplates() {
   const [outputFormat, setOutputFormat] = useState<'email' | 'pdf' | 'print'>('pdf');
   const [showCustomizer, setShowCustomizer] = useState(false);
 
-  // Template customization states
-  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
-  const [companyInfo, setCompanyInfo] = useState({
-    name: "Your Company Name",
-    address: "123 Business Street",
-    city: "Business City, BC 12345",
-    phone: "+1 (555) 123-4567",
-    email: "contact@yourcompany.com",
-    website: "www.yourcompany.com"
-  });
-  const [templateSettings, setTemplateSettings] = useState({
-    headerText: "QUOTATION",
-    footerText: "Thank you for your business!",
-    termsAndConditions: "Payment terms: Net 30 days. Prices valid for 30 days. All prices in USD.",
-    includeCompanyLogo: true,
-    includeTerms: true,
-    primaryColor: "#2563eb"
-  });
-
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
+  // Create user-specific storage key
   const getUserStorageKey = (key: string) => {
     return user ? `${key}_${user.id}` : key;
   };
 
-  // Load saved settings
+  // Load saved template settings
   useEffect(() => {
     if (user) {
       const savedTemplate = localStorage.getItem(getUserStorageKey('selected_template'));
       const savedFormat = localStorage.getItem(getUserStorageKey('output_format'));
-      const savedLogo = localStorage.getItem('companyLogo');
-      const savedCompanyInfo = localStorage.getItem('companyInfo');
-      const savedTemplateSettings = localStorage.getItem('templateSettings');
       
       if (savedTemplate) {
         setSelectedTemplateId(savedTemplate);
@@ -97,21 +76,13 @@ export function QuoteTemplates() {
       if (savedFormat) {
         setOutputFormat(savedFormat as 'email' | 'pdf' | 'print');
       }
-      if (savedLogo) {
-        setCompanyLogo(savedLogo);
-      }
-      if (savedCompanyInfo) {
-        setCompanyInfo(JSON.parse(savedCompanyInfo));
-      }
-      if (savedTemplateSettings) {
-        setTemplateSettings(JSON.parse(savedTemplateSettings));
-      }
     }
   }, [user]);
 
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId);
     
+    // Save to localStorage for use in processing queue
     if (user) {
       localStorage.setItem(getUserStorageKey('selected_template'), templateId);
     }
@@ -125,14 +96,10 @@ export function QuoteTemplates() {
   const handleOutputFormatChange = (format: string) => {
     setOutputFormat(format as 'email' | 'pdf' | 'print');
     
+    // Save to localStorage
     if (user) {
       localStorage.setItem(getUserStorageKey('output_format'), format);
     }
-    
-    toast({
-      title: "Output Format Updated",
-      description: `Output format changed to ${format.toUpperCase()}`
-    });
   };
 
   const handleSaveSettings = () => {
@@ -181,21 +148,21 @@ export function QuoteTemplates() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Template Selection Card */}
-          <Card className="bg-gradient-to-br from-white to-slate-50 shadow-xl border-0">
-            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+          <Card className="bg-white/60 backdrop-blur-sm border-slate-200/60 shadow-xl">
+            <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="h-5 w-5" />
+                <FileText className="h-5 w-5 text-blue-600" />
                 Template Selection
               </CardTitle>
-              <CardDescription className="text-blue-100">
+              <CardDescription>
                 Choose your preferred PDF template format
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-6 space-y-6">
-              <div className="space-y-4">
-                <Label className="text-sm font-semibold text-slate-700">PDF Template</Label>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-slate-700">PDF Template</Label>
                 <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
-                  <SelectTrigger className="w-full bg-white border-slate-200 shadow-sm">
+                  <SelectTrigger className="w-full bg-white border-slate-200">
                     <SelectValue placeholder="Select template format" />
                   </SelectTrigger>
                   <SelectContent>
@@ -212,31 +179,31 @@ export function QuoteTemplates() {
                   </SelectContent>
                 </Select>
                 {selectedTemplate && (
-                  <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg border-l-4 border-blue-500">
+                  <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
                     {selectedTemplate.description}
                   </p>
                 )}
               </div>
 
               {/* Output Format Selection */}
-              <div className="space-y-4 pt-4 border-t border-slate-200">
-                <Label className="text-sm font-semibold text-slate-700">Output Format</Label>
+              <div className="space-y-3 pt-4 border-t border-slate-200">
+                <Label className="text-sm font-medium text-slate-700">Output Format</Label>
                 <RadioGroup value={outputFormat} onValueChange={handleOutputFormatChange}>
-                  <div className="flex items-center space-x-3 p-4 rounded-lg hover:bg-slate-50 transition-colors border border-slate-200">
+                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
                     <RadioGroupItem value="email" id="email" />
                     <Label htmlFor="email" className="flex items-center gap-2 cursor-pointer">
                       <Mail className="h-4 w-4 text-blue-600" />
                       <span className="font-medium">Email with PDF Attachment</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-3 p-4 rounded-lg hover:bg-slate-50 transition-colors border border-slate-200">
+                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
                     <RadioGroupItem value="pdf" id="pdf" />
                     <Label htmlFor="pdf" className="flex items-center gap-2 cursor-pointer">
                       <FileText className="h-4 w-4 text-red-600" />
                       <span className="font-medium">PDF Only</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-3 p-4 rounded-lg hover:bg-slate-50 transition-colors border border-slate-200">
+                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
                     <RadioGroupItem value="print" id="print" />
                     <Label htmlFor="print" className="flex items-center gap-2 cursor-pointer">
                       <Printer className="h-4 w-4 text-gray-600" />
@@ -249,25 +216,25 @@ export function QuoteTemplates() {
           </Card>
 
           {/* Live Preview Card */}
-          <Card className="lg:col-span-2 bg-gradient-to-br from-white to-slate-50 shadow-xl border-0">
-            <CardHeader className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-t-lg">
+          <Card className="lg:col-span-2 bg-white/60 backdrop-blur-sm border-slate-200/60 shadow-xl">
+            <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Eye className="h-5 w-5" />
+                <Eye className="h-5 w-5 text-green-600" />
                 PDF Template Preview
               </CardTitle>
-              <CardDescription className="text-green-100">
+              <CardDescription>
                 Preview how your PDF quotation will appear to customers
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent>
               {selectedTemplate && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {/* Template Info */}
-                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
                     <Badge className={getCategoryColor(selectedTemplate.category)}>
                       {selectedTemplate.category.toUpperCase()}
                     </Badge>
-                    <Badge variant="outline" className="border-slate-300 bg-white">
+                    <Badge variant="outline" className="border-slate-300">
                       {outputFormat.toUpperCase()}
                     </Badge>
                     <span className="font-semibold text-slate-800">{selectedTemplate.name}</span>
@@ -277,7 +244,7 @@ export function QuoteTemplates() {
                   </div>
 
                   {/* PDF Preview */}
-                  <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-lg">
+                  <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
                     <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
                       <div className="flex items-center justify-between">
                         <Label className="font-semibold text-slate-700">PDF Template Preview</Label>
@@ -301,82 +268,45 @@ export function QuoteTemplates() {
                     <div className="p-6">
                       <div className="bg-white border rounded-lg p-6 shadow-sm">
                         {/* PDF Header Simulation */}
-                        <div className="border-b-2 pb-4 mb-6" style={{borderColor: templateSettings.primaryColor}}>
+                        <div className="border-b-2 border-blue-600 pb-4 mb-6">
                           <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                              {companyLogo && templateSettings.includeCompanyLogo ? (
-                                <img src={companyLogo} alt="Company Logo" className="h-16 object-contain max-w-[150px] mr-4" />
-                              ) : (
-                                <div className="w-16 h-16 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500 mr-4">
-                                  LOGO
-                                </div>
-                              )}
+                            <div className="w-16 h-16 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500">
+                              LOGO
                             </div>
                             <div className="text-right">
-                              <h1 className="text-2xl font-bold" style={{color: templateSettings.primaryColor}}>
-                                {templateSettings.headerText}
-                              </h1>
+                              <h1 className="text-2xl font-bold text-blue-600">QUOTATION</h1>
                               <p className="text-sm text-slate-600">Quote #QS-2024-001</p>
                             </div>
                           </div>
                         </div>
                         
-                        {/* Company & Customer Info */}
-                        <div className="grid grid-cols-2 gap-6 text-sm mb-6">
-                          <div>
-                            <h3 className="font-semibold mb-2" style={{color: templateSettings.primaryColor}}>From:</h3>
-                            <div className="text-slate-700">
-                              <p className="font-medium">{companyInfo.name}</p>
-                              <p>{companyInfo.address}</p>
-                              <p>{companyInfo.city}</p>
-                              <p>{companyInfo.phone}</p>
-                              <p>{companyInfo.email}</p>
-                              <p>{companyInfo.website}</p>
+                        {/* Email Content in PDF Format */}
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-6 text-sm">
+                            <div>
+                              <h3 className="font-semibold text-blue-600 mb-2">From:</h3>
+                              <div className="text-slate-700">
+                                <p>Your Company Name</p>
+                                <p>123 Business Street</p>
+                                <p>contact@company.com</p>
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-blue-600 mb-2">To:</h3>
+                              <div className="text-slate-700">
+                                <p>{"{customer_name}"}</p>
+                                <p>{"{customer_email}"}</p>
+                              </div>
                             </div>
                           </div>
-                          <div>
-                            <h3 className="font-semibold mb-2" style={{color: templateSettings.primaryColor}}>To:</h3>
-                            <div className="text-slate-700">
-                              <p className="font-medium">Sample Customer</p>
-                              <p>123 Customer Street</p>
-                              <p>customer@example.com</p>
-                            </div>
+                          
+                          <div className="font-mono text-sm whitespace-pre-line leading-relaxed text-slate-700 bg-slate-50 p-4 rounded-lg border-l-4 border-blue-500">
+                            {selectedTemplate.preview}
                           </div>
-                        </div>
-                        
-                        {/* Product Table */}
-                        <div className="mb-6">
-                          <table className="w-full border-collapse border border-slate-300">
-                            <thead>
-                              <tr style={{backgroundColor: `${templateSettings.primaryColor}15`}}>
-                                <th className="border border-slate-300 p-3 text-left">Product</th>
-                                <th className="border border-slate-300 p-3 text-center">Qty</th>
-                                <th className="border border-slate-300 p-3 text-right">Unit Price</th>
-                                <th className="border border-slate-300 p-3 text-right">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr>
-                                <td className="border border-slate-300 p-3">Sample Product Name</td>
-                                <td className="border border-slate-300 p-3 text-center">1</td>
-                                <td className="border border-slate-300 p-3 text-right">₹1,000.00</td>
-                                <td className="border border-slate-300 p-3 text-right font-semibold">₹1,000.00</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Terms & Conditions */}
-                        {templateSettings.includeTerms && (
-                          <div className="mb-6">
-                            <h3 className="font-semibold mb-2" style={{color: templateSettings.primaryColor}}>Terms & Conditions:</h3>
-                            <p className="text-sm text-slate-700">{templateSettings.termsAndConditions}</p>
+                          
+                          <div className="border-t pt-4 text-center">
+                            <p className="text-sm text-slate-600">Thank you for your business!</p>
                           </div>
-                        )}
-                        
-                        {/* Footer */}
-                        <div className="text-center pt-4 border-t border-slate-300">
-                          <p className="text-sm text-slate-600">{templateSettings.footerText}</p>
                         </div>
                       </div>
                     </div>
