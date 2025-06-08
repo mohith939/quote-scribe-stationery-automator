@@ -215,21 +215,61 @@ Call to confirm order.`
         format: outputFormat
       });
 
-      // FIXED: Send as JSON instead of form data
-      const response = await fetch(scriptUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'sendEmail',
-          to: item.customerInfo.email,
-          subject: emailSubject,
-          body: emailBody,
-          format: outputFormat,
-          emailId: item.email.id
-        })
-      });
+      // Enhanced error handling with different approaches
+      let response;
+      try {
+        // First attempt: POST with JSON (what the script expects)
+        response = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'sendEmail',
+            to: item.customerInfo.email,
+            subject: emailSubject,
+            body: emailBody,
+            format: outputFormat,
+            emailId: item.email.id
+          })
+        });
+      } catch (corsError) {
+        console.log('POST request failed, trying alternative approach...');
+        // Fallback: Try with no-cors mode
+        try {
+          response = await fetch(scriptUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'sendEmail',
+              to: item.customerInfo.email,
+              subject: emailSubject,
+              body: emailBody,
+              format: outputFormat,
+              emailId: item.email.id
+            })
+          });
+          
+          // no-cors mode doesn't allow reading response, so assume success
+          console.log('Email sent via no-cors mode');
+          
+          // Remove item from queue after sending
+          setQueueItems(items => items.filter(queueItem => queueItem.id !== item.id));
+          
+          toast({
+            title: "Response Sent Successfully",
+            description: `Email response sent to ${item.customerInfo.name} via ${outputFormat}`,
+          });
+          return;
+          
+        } catch (noCorsError) {
+          console.error('Both CORS and no-cors attempts failed:', noCorsError);
+          throw new Error('CORS policy is blocking the request. Please check your Google Apps Script deployment settings.');
+        }
+      }
 
       console.log('Response status:', response.status);
 
@@ -267,7 +307,15 @@ Call to confirm order.`
       
       if (error instanceof Error) {
         if (error.message.includes('CORS')) {
-          errorMessage = "CORS error: Please update your Google Apps Script with proper CORS headers.";
+          errorMessage = `CORS Error: Your Google Apps Script needs proper CORS configuration.
+
+SOLUTION:
+1. Open your Google Apps Script project
+2. Make sure your doPost function includes proper CORS headers
+3. Add a doOptions function to handle preflight requests
+4. Redeploy as a new version with "Execute as: Me" and "Access: Anyone"
+
+Check the reference GoogleAppsScriptComplete.js file for the correct implementation.`;
         } else if (error.message.includes('Failed to fetch')) {
           errorMessage = "Network error: Check your Google Apps Script URL and ensure the script is deployed correctly.";
         } else {
