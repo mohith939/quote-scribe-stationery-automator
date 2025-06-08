@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { PDFTemplateCustomizer } from "@/components/templates/PDFTemplateCustomizer";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { sendQuoteEmail } from "@/services/gmailService";
 import { 
   FileText, 
   Settings, 
@@ -28,6 +29,7 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
   const [selectedTemplate, setSelectedTemplate] = useState('formal-business');
   const [outputFormat, setOutputFormat] = useState('email');
   const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   
   // Load saved company info and logo
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
@@ -93,19 +95,8 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
           console.error('Error parsing template settings:', error);
         }
       }
-
-      // Load quote data if available
-      const savedQuoteData = localStorage.getItem(getUserStorageKey('current_quote_data'));
-      if (savedQuoteData && !quoteData) {
-        try {
-          const parsedQuoteData = JSON.parse(savedQuoteData);
-          console.log('Loaded quote data from localStorage:', parsedQuoteData);
-        } catch (error) {
-          console.error('Error parsing quote data:', error);
-        }
-      }
     }
-  }, [user, quoteData]);
+  }, [user]);
 
   // Save selections when they change
   useEffect(() => {
@@ -148,8 +139,90 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
     { id: 'print', name: 'Print', icon: Printer, description: 'Print-ready format' }
   ];
 
-  const handleSendQuote = () => {
-    if (!quoteData) {
+  // Generate quote content based on selected template
+  const generateQuoteContent = (templateId: string, quoteData: any) => {
+    const customerName = quoteData?.customerName || 'Customer';
+    const date = new Date().toLocaleDateString();
+    
+    switch (templateId) {
+      case 'formal-business':
+        return `Dear ${customerName},
+
+Thank you for your inquiry regarding our products. We are pleased to provide you with the following quotation:
+
+Product Details:
+${quoteData?.detectedProducts?.map((product: any, index: number) => 
+  `- ${product.product}: ${product.quantity || 1} units × ₹${product.price || '100'} = ₹${(product.quantity || 1) * (product.price || 100)}`
+).join('\n') || '- Sample Product: 1 units × ₹100 = ₹100'}
+
+Terms & Conditions:
+- Payment: 50% advance, 50% on delivery
+- Delivery: 7-10 business days
+- Warranty: 1 year manufacturer warranty
+- Validity: 30 days
+
+We look forward to your positive response.
+
+Best regards,
+${companyInfo.name}`;
+
+      case 'casual-friendly':
+        return `Hi ${customerName}!
+
+Thanks for reaching out about our products. Here's your quote:
+
+${quoteData?.detectedProducts?.map((product: any, index: number) => 
+  `• ${product.product}: ${product.quantity || 1} units @ ₹${product.price || '100'} each = ₹${(product.quantity || 1) * (product.price || 100)}`
+).join('\n') || '• Sample Product: 1 units @ ₹100 each = ₹100'}
+
+Quick details:
+- Payment: 50% advance, balance on delivery
+- Delivery: 7-10 days
+- Valid for 30 days
+
+Let me know if you have any questions!
+
+Cheers,
+${companyInfo.name}`;
+
+      case 'detailed-comprehensive':
+        return `=== COMPREHENSIVE QUOTATION ===
+
+Customer: ${customerName}
+Date: ${date}
+
+Product Details:
+${quoteData?.detectedProducts?.map((product: any, index: number) => 
+  `- ${product.product}: ${product.quantity || 1} units × ₹${product.price || '100'} = ₹${(product.quantity || 1) * (product.price || 100)}`
+).join('\n') || '- Sample Product: 1 units × ₹100 = ₹100'}
+
+Terms & Conditions:
+- Payment: 50% advance, 50% on delivery
+- Delivery: 7-10 business days
+- Warranty: 1 year manufacturer warranty
+- Validity: 30 days
+
+Best regards,
+${companyInfo.name}`;
+
+      case 'simple-quick':
+        return `Quote for ${customerName}:
+
+${quoteData?.detectedProducts?.map((product: any, index: number) => 
+  `${product.product}: ₹${(product.quantity || 1) * (product.price || 100)}`
+).join('\n') || 'Sample Product: ₹100'}
+
+Valid for 7 days. Ready to ship!
+
+${companyInfo.name}`;
+
+      default:
+        return generateQuoteContent('formal-business', quoteData);
+    }
+  };
+
+  const handleSendQuote = async () => {
+    if (!currentQuoteData) {
       toast({
         title: "No Quote Data",
         description: "Please select a quote from the processing queue first.",
@@ -158,16 +231,96 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
       return;
     }
 
-    toast({
-      title: "Quote Sent Successfully",
-      description: `Quote sent to ${quoteData.customerName} via ${outputFormat}`,
-    });
+    setIsSending(true);
+    
+    try {
+      console.log('Starting email send process from Templates page');
+      console.log('Selected template:', selectedTemplate);
+      console.log('Output format:', outputFormat);
+      console.log('Quote data:', currentQuoteData);
+
+      // Generate the quote content based on selected template
+      const quoteContent = generateQuoteContent(selectedTemplate, currentQuoteData);
+      
+      // Create subject line
+      const subject = `Re: ${currentQuoteData.emailSubject || 'Your Inquiry'} - ${templates.find(t => t.id === selectedTemplate)?.name || 'Quotation'}`;
+      
+      console.log('Generated quote content:', quoteContent);
+      console.log('Email subject:', subject);
+
+      // Extract email from the 'from' field
+      const emailMatch = currentQuoteData.customerEmail?.match(/<(.+?)>/) || 
+                        currentQuoteData.customerEmail?.match(/(\S+@\S+\.\S+)/);
+      const toEmail = emailMatch ? emailMatch[1] : currentQuoteData.customerEmail;
+
+      if (!toEmail) {
+        throw new Error('No valid email address found for the customer');
+      }
+
+      console.log('Sending to email:', toEmail);
+
+      // Send the email using the gmail service
+      const success = await sendQuoteEmail(
+        toEmail,
+        subject,
+        quoteContent,
+        currentQuoteData.id
+      );
+
+      if (success) {
+        toast({
+          title: "Quote Sent Successfully",
+          description: `Quote sent to ${currentQuoteData.customerName} via ${outputFormat}`,
+        });
+
+        // Handle different output formats
+        if (outputFormat === 'pdf') {
+          toast({
+            title: "PDF Generation",
+            description: "PDF version will be attached in future updates",
+          });
+        } else if (outputFormat === 'print') {
+          toast({
+            title: "Print Ready",
+            description: "Quote formatted for printing",
+          });
+        }
+
+        // Log the sent quote
+        console.log('Quote sent successfully from Templates page');
+        
+      } else {
+        throw new Error('Failed to send email through Gmail service');
+      }
+
+    } catch (error) {
+      console.error('Error sending quote from Templates:', error);
+      toast({
+        title: "Error Sending Quote",
+        description: error instanceof Error ? error.message : 'Failed to send quote',
+        variant: "destructive"
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handlePreviewQuote = () => {
+    if (!currentQuoteData) {
+      toast({
+        title: "No Quote Data",
+        description: "Please select a quote from the processing queue first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const content = generateQuoteContent(selectedTemplate, currentQuoteData);
+    console.log('Quote preview:', content);
+    
     toast({
-      title: "Generating Preview",
-      description: "Creating quote preview with current template...",
+      title: "Quote Preview Generated",
+      description: "Check the live preview on the right panel",
     });
   };
 
@@ -218,6 +371,7 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
                 onClick={handlePreviewQuote}
                 variant="outline"
                 className="flex items-center gap-2"
+                disabled={!currentQuoteData}
               >
                 <Eye className="h-4 w-4" />
                 Preview
@@ -225,10 +379,10 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
               <Button
                 onClick={handleSendQuote}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-                disabled={!currentQuoteData}
+                disabled={!currentQuoteData || isSending}
               >
                 <Send className="h-4 w-4" />
-                Send Quote
+                {isSending ? 'Sending...' : 'Send Quote'}
               </Button>
             </div>
           </div>
@@ -365,62 +519,11 @@ export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
                 </div>
 
                 {/* Quote Content Based on Selected Template */}
-                <div className="mb-4">
-                  {selectedTemplate === 'formal-business' && (
-                    <div>
-                      <p className="mb-2">Dear {currentQuoteData?.customerName || 'Customer'},</p>
-                      <p className="mb-2">Thank you for your inquiry regarding our products.</p>
-                      <p>We are pleased to provide you with the following quotation:</p>
-                    </div>
-                  )}
-                  {selectedTemplate === 'casual-friendly' && (
-                    <div>
-                      <p className="mb-2">Hi {currentQuoteData?.customerName || 'Customer'}!</p>
-                      <p>Thanks for reaching out about our products. Here's your quote:</p>
-                    </div>
-                  )}
-                  {selectedTemplate === 'detailed-comprehensive' && (
-                    <div>
-                      <h3 className="font-bold mb-2" style={{color: templateSettings.primaryColor}}>
-                        COMPREHENSIVE QUOTATION
-                      </h3>
-                      <p>Customer: {currentQuoteData?.customerName || 'Sample Customer'}</p>
-                      <p>Date: {new Date().toLocaleDateString()}</p>
-                    </div>
-                  )}
-                  {selectedTemplate === 'simple-quick' && (
-                    <div>
-                      <p>Quote for products: Ready to ship!</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Sample Product Table */}
-                <div className="mb-4">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr style={{backgroundColor: `${templateSettings.primaryColor}15`}}>
-                        <th className="border p-1 text-left">Product</th>
-                        <th className="border p-1 text-center">Qty</th>
-                        <th className="border p-1 text-right">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentQuoteData?.detectedProducts?.map((product: any, index: number) => (
-                        <tr key={index}>
-                          <td className="border p-1">{product.product}</td>
-                          <td className="border p-1 text-center">{product.quantity || 1}</td>
-                          <td className="border p-1 text-right">₹1,000.00</td>
-                        </tr>
-                      )) || (
-                        <tr>
-                          <td className="border p-1">Sample Product</td>
-                          <td className="border p-1 text-center">1</td>
-                          <td className="border p-1 text-right">₹1,000.00</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="mb-4 whitespace-pre-line">
+                  {currentQuoteData ? 
+                    generateQuoteContent(selectedTemplate, currentQuoteData) : 
+                    'Please select a quote from the processing queue to see preview content.'
+                  }
                 </div>
 
                 {/* Terms & Footer */}
