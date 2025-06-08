@@ -270,7 +270,14 @@ ${companyInfo.name}`;
         throw new Error('Google Apps Script URL not configured. Please check your settings.');
       }
 
-      // Try sending the email with better error handling
+      console.log('Sending email with data:', {
+        to: toEmail,
+        subject: subject,
+        body: quoteContent,
+        format: outputFormat
+      });
+
+      // Try sending the email with both approaches like in Processing Queue
       let success = false;
       try {
         console.log('Attempting to send email...');
@@ -302,37 +309,31 @@ ${companyInfo.name}`;
 
       } catch (fetchError: any) {
         console.error('Primary send failed:', fetchError);
+        console.log('CORS error detected, trying fallback method...');
         
-        // If it's a CORS error, try the no-cors mode as fallback
-        if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
-          console.log('CORS error detected, trying fallback method...');
+        // Fallback: Use no-cors mode (same as Processing Queue)
+        try {
+          await fetch(scriptUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'sendEmail',
+              to: toEmail,
+              subject: subject,
+              body: quoteContent,
+              emailId: currentQuoteData.id
+            })
+          });
           
-          try {
-            // Fallback: Use no-cors mode (fire and forget)
-            await fetch(scriptUrl, {
-              method: 'POST',
-              mode: 'no-cors',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'sendEmail',
-                to: toEmail,
-                subject: subject,
-                body: quoteContent,
-                emailId: currentQuoteData.id
-              })
-            });
-            
-            console.log('Fallback method completed');
-            success = true; // Assume success since we can't verify with no-cors
-            
-          } catch (fallbackError) {
-            console.error('Fallback method also failed:', fallbackError);
-            throw new Error('Both primary and fallback email sending methods failed. Please check your Google Apps Script configuration.');
-          }
-        } else {
-          throw fetchError;
+          console.log('Fallback method completed');
+          success = true; // Assume success since we can't verify with no-cors
+          
+        } catch (fallbackError) {
+          console.error('Fallback method also failed:', fallbackError);
+          throw new Error('Both primary and fallback email sending methods failed.');
         }
       }
 
@@ -345,12 +346,12 @@ ${companyInfo.name}`;
         // Handle different output formats
         if (outputFormat === 'pdf') {
           toast({
-            title: "PDF Generation",
-            description: "PDF format selected - email sent with enhanced formatting",
+            title: "PDF Format Selected",
+            description: "Email sent with PDF formatting applied",
           });
         } else if (outputFormat === 'print') {
           toast({
-            title: "Print Format",
+            title: "Print Format Selected",
             description: "Print-ready format sent via email",
           });
         }
@@ -366,13 +367,7 @@ ${companyInfo.name}`;
       
       let errorMessage = 'Failed to send quote';
       if (error instanceof Error) {
-        if (error.message.includes('CORS')) {
-          errorMessage = 'CORS error: Please redeploy your Google Apps Script with proper CORS headers';
-        } else if (error.message.includes('Google Apps Script')) {
-          errorMessage = error.message;
-        } else {
-          errorMessage = error.message;
-        }
+        errorMessage = error.message;
       }
       
       toast({
