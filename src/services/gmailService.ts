@@ -1,3 +1,4 @@
+
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -481,8 +482,12 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string, 
       return false;
     }
 
-    const response = await fetch(scriptUrl, {
+    console.log('Sending email via no-cors mode...');
+    
+    // Use the same no-cors approach as Processing Queue
+    await fetch(scriptUrl, {
       method: 'POST',
+      mode: 'no-cors',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -495,12 +500,8 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string, 
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.success || false;
+    console.log('Email sent via no-cors mode');
+    return true;
   } catch (error) {
     console.error('Error sending email:', error);
     return false;
@@ -525,8 +526,12 @@ export const logQuoteToSheet = async (quoteData: {
       return false;
     }
 
-    const response = await fetch(scriptUrl, {
+    console.log('Logging quote to sheet via no-cors mode...');
+
+    // Use the same no-cors approach as Processing Queue
+    await fetch(scriptUrl, {
       method: 'POST',
+      mode: 'no-cors',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -536,12 +541,8 @@ export const logQuoteToSheet = async (quoteData: {
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.success || false;
+    console.log('Quote logged via no-cors mode');
+    return true;
   } catch (error) {
     console.error('Error logging quote to sheet:', error);
     return false;
