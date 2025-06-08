@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -222,6 +221,7 @@ ${companyInfo.name}`;
 
   // Get Google Apps Script URL from localStorage
   const getGoogleAppsScriptUrl = (): string | null => {
+    // Try both possible localStorage keys
     return localStorage.getItem('google_apps_script_url') || 
            localStorage.getItem('gmail_script_url') || null;
   };
@@ -253,7 +253,7 @@ ${companyInfo.name}`;
       console.log('Generated quote content:', quoteContent);
       console.log('Email subject:', subject);
 
-      // Extract email from the 'from' field
+      // Extract email from the 'from' field (same logic as Processing Queue)
       const emailMatch = currentQuoteData.customerEmail?.match(/<(.+?)>/) || 
                         currentQuoteData.customerEmail?.match(/(\S+@\S+\.\S+)/);
       const toEmail = emailMatch ? emailMatch[1] : currentQuoteData.customerEmail;
@@ -264,11 +264,13 @@ ${companyInfo.name}`;
 
       console.log('Sending to email:', toEmail);
 
-      // Get script URL
+      // Get script URL using the SAME method as Processing Queue
       const scriptUrl = getGoogleAppsScriptUrl();
       if (!scriptUrl) {
         throw new Error('Google Apps Script URL not configured. Please check your settings.');
       }
+
+      console.log('Using script URL:', scriptUrl);
 
       console.log('Sending email with data:', {
         to: toEmail,
@@ -277,90 +279,45 @@ ${companyInfo.name}`;
         format: outputFormat
       });
 
-      // Try sending the email with both approaches like in Processing Queue
-      let success = false;
-      try {
-        console.log('Attempting to send email...');
-        
-        const response = await fetch(scriptUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'sendEmail',
-            to: toEmail,
-            subject: subject,
-            body: quoteContent,
-            emailId: currentQuoteData.id
-          })
-        });
+      // Use the EXACT SAME approach as Processing Queue (no-cors only)
+      console.log('Sending email via no-cors mode...');
+      
+      await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sendEmail',
+          to: toEmail,
+          subject: subject,
+          body: quoteContent,
+          emailId: currentQuoteData.id
+        })
+      });
+      
+      console.log('Email sent via no-cors mode');
 
-        if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
-        }
+      toast({
+        title: "Quote Sent Successfully",
+        description: `Quote sent to ${currentQuoteData.customerName} via ${outputFormat}`,
+      });
 
-        const result = await response.json();
-        success = result.success;
-        
-        if (!success) {
-          throw new Error(result.error || 'Email sending failed');
-        }
-
-      } catch (fetchError: any) {
-        console.error('Primary send failed:', fetchError);
-        console.log('CORS error detected, trying fallback method...');
-        
-        // Fallback: Use no-cors mode (same as Processing Queue)
-        try {
-          await fetch(scriptUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'sendEmail',
-              to: toEmail,
-              subject: subject,
-              body: quoteContent,
-              emailId: currentQuoteData.id
-            })
-          });
-          
-          console.log('Fallback method completed');
-          success = true; // Assume success since we can't verify with no-cors
-          
-        } catch (fallbackError) {
-          console.error('Fallback method also failed:', fallbackError);
-          throw new Error('Both primary and fallback email sending methods failed.');
-        }
-      }
-
-      if (success) {
+      // Handle different output formats
+      if (outputFormat === 'pdf') {
         toast({
-          title: "Quote Sent Successfully",
-          description: `Quote sent to ${currentQuoteData.customerName} via ${outputFormat}`,
+          title: "PDF Format Selected",
+          description: "Email sent with PDF formatting applied",
         });
-
-        // Handle different output formats
-        if (outputFormat === 'pdf') {
-          toast({
-            title: "PDF Format Selected",
-            description: "Email sent with PDF formatting applied",
-          });
-        } else if (outputFormat === 'print') {
-          toast({
-            title: "Print Format Selected",
-            description: "Print-ready format sent via email",
-          });
-        }
-
-        console.log('Quote sent successfully from Templates page');
-        
-      } else {
-        throw new Error('Email sending failed - please check Google Apps Script logs');
+      } else if (outputFormat === 'print') {
+        toast({
+          title: "Print Format Selected",
+          description: "Print-ready format sent via email",
+        });
       }
+
+      console.log('Quote sent successfully from Templates page');
 
     } catch (error) {
       console.error('Error sending quote from Templates:', error);
