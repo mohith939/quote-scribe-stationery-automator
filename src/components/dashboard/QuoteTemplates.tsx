@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { PDFTemplateCustomizer } from "@/components/templates/PDFTemplateCustomizer";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { sendQuoteEmail, logQuoteToSheet } from "@/services/gmailService";
 import { 
   FileText, 
   Settings, 
@@ -220,6 +220,18 @@ ${companyInfo.name}`;
     }
   };
 
+  // Get Google Apps Script URL (same as ProcessingQueue)
+  const getGoogleAppsScriptUrl = async (): Promise<string | null> => {
+    try {
+      const localUrl = localStorage.getItem('google_apps_script_url') || 
+                      localStorage.getItem('gmail_script_url');
+      return localUrl;
+    } catch (error) {
+      console.error('Error getting script URL:', error);
+      return null;
+    }
+  };
+
   const handleSendQuote = async () => {
     if (!currentQuoteData) {
       toast({
@@ -233,17 +245,29 @@ ${companyInfo.name}`;
     setIsSending(true);
     
     try {
-      console.log('Starting email send process from Templates page using gmailService');
+      console.log('Starting email send from Templates using ProcessingQueue method');
       console.log('Selected template:', selectedTemplate);
       console.log('Output format:', outputFormat);
-      console.log('Quote data:', currentQuoteData);
+
+      // Get the script URL
+      const scriptUrl = await getGoogleAppsScriptUrl();
+      if (!scriptUrl) {
+        throw new Error('Google Apps Script URL not configured');
+      }
 
       // Generate the quote content based on selected template
       const quoteContent = generateQuoteContent(selectedTemplate, currentQuoteData);
       
-      // Create subject line with format indicator
+      // Create subject line with format and template indicators
       let subject = `Re: ${currentQuoteData.emailSubject || 'Your Inquiry'} - ${templates.find(t => t.id === selectedTemplate)?.name || 'Quotation'}`;
       
+      // Add format-specific subject modification
+      if (outputFormat === 'pdf') {
+        subject = `${subject} [PDF Format]`;
+      } else if (outputFormat === 'print') {
+        subject = `${subject} [Print Ready]`;
+      }
+
       console.log('Generated quote content:', quoteContent);
       console.log('Email subject:', subject);
       console.log('Selected format:', outputFormat);
@@ -259,42 +283,68 @@ ${companyInfo.name}`;
 
       console.log('Sending to email:', toEmail);
 
-      // Use the enhanced gmailService method with format support
-      const success = await sendQuoteEmail(
-        toEmail, 
-        subject, 
-        quoteContent, 
-        currentQuoteData.id,
-        outputFormat as 'email' | 'pdf' | 'print'
-      );
-
-      if (!success) {
-        throw new Error('Failed to send email via Gmail service');
+      // Use the EXACT same method as ProcessingQueue - direct fetch with no-cors
+      console.log('Sending email via no-cors mode (ProcessingQueue method)...');
+      
+      // Add format-specific body modification
+      let emailBody = quoteContent;
+      if (outputFormat === 'pdf') {
+        emailBody = `${quoteContent}\n\n--- This quotation is formatted for PDF generation ---\nPlease save or print this email for your records.`;
+      } else if (outputFormat === 'print') {
+        emailBody = `${quoteContent}\n\n--- This quotation is print-ready ---\nYou can print this email directly for your records.`;
       }
 
-      console.log(`Email sent successfully via gmailService with ${outputFormat} format`);
+      await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sendEmail',
+          to: toEmail,
+          subject: subject,
+          body: emailBody,
+          format: outputFormat,
+          emailId: currentQuoteData.id
+        })
+      });
 
-      // Log the quote to sheet (same as Processing Queue)
+      console.log(`Email sent via no-cors mode (ProcessingQueue method) with ${outputFormat} format`);
+
+      // Log the quote to sheet using the same method
       if (currentQuoteData.detectedProducts && currentQuoteData.detectedProducts.length > 0) {
+        console.log('Logging quote to sheet via no-cors mode...');
         const product = currentQuoteData.detectedProducts[0];
-        await logQuoteToSheet({
-          timestamp: new Date().toISOString(),
-          customerName: currentQuoteData.customerName || 'Unknown',
-          emailAddress: toEmail,
-          product: product.product || 'Unknown Product',
-          quantity: product.quantity || 1,
-          pricePerUnit: product.price || 100,
-          totalAmount: (product.quantity || 1) * (product.price || 100),
-          status: 'Sent'
+        await fetch(scriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'logQuote',
+            quoteData: {
+              timestamp: new Date().toISOString(),
+              customerName: currentQuoteData.customerName || 'Unknown',
+              emailAddress: toEmail,
+              product: product.product || 'Unknown Product',
+              quantity: product.quantity || 1,
+              pricePerUnit: product.price || 100,
+              totalAmount: (product.quantity || 1) * (product.price || 100),
+              status: 'Sent'
+            }
+          })
         });
+        console.log('Quote logged via no-cors mode');
       }
 
       toast({
         title: "Quote Sent Successfully",
-        description: `Quote sent to ${currentQuoteData.customerName} in ${outputFormat} format`,
+        description: `Quote sent to ${currentQuoteData.customerName} in ${outputFormat} format using ProcessingQueue method`,
       });
 
-      console.log(`Quote sent successfully from Templates page using gmailService with ${outputFormat} format`);
+      console.log(`Quote sent successfully from Templates page using ProcessingQueue method with ${outputFormat} format`);
 
     } catch (error) {
       console.error('Error sending quote from Templates:', error);
@@ -310,20 +360,6 @@ ${companyInfo.name}`;
         variant: "destructive"
       });
 
-      // Log failed quote
-      if (currentQuoteData.detectedProducts && currentQuoteData.detectedProducts.length > 0) {
-        const product = currentQuoteData.detectedProducts[0];
-        await logQuoteToSheet({
-          timestamp: new Date().toISOString(),
-          customerName: currentQuoteData.customerName || 'Unknown',
-          emailAddress: currentQuoteData.customerEmail || 'Unknown',
-          product: product.product || 'Unknown Product',
-          quantity: product.quantity || 1,
-          pricePerUnit: product.price || 100,
-          totalAmount: (product.quantity || 1) * (product.price || 100),
-          status: 'Failed'
-        });
-      }
     } finally {
       setIsSending(false);
     }
