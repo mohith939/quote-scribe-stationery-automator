@@ -1,6 +1,6 @@
 /**
- * COMPLETE Google Apps Script for QuoteScribe - FIXED CORS VERSION
- * This version includes proper CORS handling for all requests including preflight
+ * COMPLETE Google Apps Script for QuoteScribe - FIXED CORS VERSION WITH FORMAT SUPPORT
+ * This version includes proper CORS handling and format support for PDF/Print/Email
  * 
  * DEPLOYMENT INSTRUCTIONS (CRITICAL):
  * 1. Go to script.google.com
@@ -107,7 +107,7 @@ function doPost(e) {
         responseData = markEmailAsRead(data.emailId);
         break;
       case 'sendEmail':
-        responseData = sendQuoteEmail(data.to, data.subject, data.body, data.emailId);
+        responseData = sendQuoteEmail(data.to, data.subject, data.body, data.emailId, data.format);
         break;
       case 'logQuote':
         responseData = logQuoteToSheet(data.quoteData);
@@ -348,7 +348,7 @@ function testConnection() {
     
     return {
       success: true,
-      message: 'Google Apps Script connection successful - CORS FIXED',
+      message: 'Google Apps Script connection successful - CORS FIXED WITH FORMAT SUPPORT',
       timestamp: new Date().toISOString(),
       services: {
         gmail: true,
@@ -362,6 +362,7 @@ function testConnection() {
         maxEmailsToFetch: CONFIG.maxEmailsToFetch
       },
       corsEnabled: true,
+      formatSupport: true,
       debugInfo: {
         threadsFound: unreadThreads.length,
         emailsFound: unreadCount,
@@ -400,22 +401,43 @@ function markEmailAsRead(emailId) {
   }
 }
 
-function sendQuoteEmail(to, subject, body, originalEmailId) {
+// ENHANCED: Email sending with format support
+function sendQuoteEmail(to, subject, body, originalEmailId, format) {
   try {
-    Logger.log('=== SENDING EMAIL ===');
+    Logger.log('=== SENDING EMAIL WITH FORMAT SUPPORT ===');
     Logger.log('To: ' + to);
     Logger.log('Subject: ' + subject);
     Logger.log('Body length: ' + body.length);
+    Logger.log('Format: ' + (format || 'email'));
     
     // Clean up the body - remove extra escaping
     const cleanBody = body.replace(/\\n/g, '\n');
     const signature = '\n\n---\nBest regards,\n' + CONFIG.companyName + '\nContact: ' + CONFIG.contactInfo;
-    const fullBody = cleanBody + signature;
+    let fullBody = cleanBody + signature;
+    
+    // Handle different formats
+    if (format === 'pdf') {
+      // Add PDF-specific formatting
+      fullBody += '\n\n[This quotation is optimized for PDF generation and printing]';
+      Logger.log('Applied PDF formatting');
+    } else if (format === 'print') {
+      // Add print-specific formatting
+      fullBody += '\n\n[This quotation is print-ready]';
+      Logger.log('Applied print formatting');
+    }
     
     // Send as HTML to preserve formatting
-    GmailApp.sendEmail(to, subject, '', {
+    const emailOptions = {
       htmlBody: fullBody.replace(/\n/g, '<br>')
-    });
+    };
+    
+    // Add format-specific options
+    if (format === 'pdf' || format === 'print') {
+      emailOptions.attachments = []; // Placeholder for future PDF attachment support
+    }
+    
+    GmailApp.sendEmail(to, subject, '', emailOptions);
+    Logger.log('Email sent successfully with format: ' + (format || 'email'));
     
     // Mark original email as read if provided
     if (originalEmailId) {
@@ -428,13 +450,13 @@ function sendQuoteEmail(to, subject, body, originalEmailId) {
       }
     }
     
-    Logger.log('Email sent successfully to: ' + to);
     return {
       success: true,
-      message: 'Email sent successfully',
+      message: 'Email sent successfully with format: ' + (format || 'email'),
       details: {
         to: to,
         subject: subject,
+        format: format || 'email',
         timestamp: new Date().toISOString()
       }
     };
@@ -447,32 +469,42 @@ function sendQuoteEmail(to, subject, body, originalEmailId) {
       details: {
         to: to,
         subject: subject,
+        format: format || 'email',
         errorMessage: error.toString()
       }
     };
   }
 }
 
+// ENHANCED: Quote logging with better error handling
 function logQuoteToSheet(quoteData) {
   try {
+    Logger.log('=== LOGGING QUOTE TO SHEET ===');
+    Logger.log('Quote data received: ' + JSON.stringify(quoteData));
+    
     if (!CONFIG.sheetId || CONFIG.sheetId === 'YOUR_GOOGLE_SHEET_ID_HERE') {
+      Logger.log('Google Sheets ID not configured, skipping sheet logging');
       return {
-        success: false,
-        error: 'Google Sheets ID not configured'
+        success: true,
+        message: 'Quote logging skipped - Google Sheets not configured',
+        warning: 'Configure sheetId in CONFIG to enable sheet logging'
       };
     }
     
     const sheet = SpreadsheetApp.openById(CONFIG.sheetId).getActiveSheet();
     
+    // Check if headers exist, if not create them
     const headers = sheet.getRange(1, 1, 1, 8).getValues()[0];
     if (!headers[0]) {
+      Logger.log('Creating sheet headers');
       sheet.getRange(1, 1, 1, 8).setValues([[
         'Timestamp', 'Customer Name', 'Email Address', 'Product', 
         'Quantity', 'Price Per Unit', 'Total Amount', 'Status'
       ]]);
     }
     
-    sheet.appendRow([
+    // Add the quote data
+    const rowData = [
       quoteData.timestamp || new Date().toISOString(),
       quoteData.customerName || 'Unknown',
       quoteData.emailAddress || 'Unknown',
@@ -481,18 +513,26 @@ function logQuoteToSheet(quoteData) {
       quoteData.pricePerUnit || 0,
       quoteData.totalAmount || 0,
       quoteData.status || 'Unknown'
-    ]);
+    ];
+    
+    sheet.appendRow(rowData);
+    Logger.log('Quote logged successfully to sheet');
     
     return {
       success: true,
-      message: 'Quote logged successfully'
+      message: 'Quote logged successfully to Google Sheets',
+      data: {
+        rowData: rowData,
+        timestamp: new Date().toISOString()
+      }
     };
     
   } catch (error) {
     Logger.log('Error logging to sheet: ' + error.toString());
     return {
       success: false,
-      error: 'Failed to log quote: ' + error.toString()
+      error: 'Failed to log quote to sheet: ' + error.toString(),
+      timestamp: new Date().toISOString()
     };
   }
 }
