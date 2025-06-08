@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { PDFTemplateCustomizer } from "@/components/templates/PDFTemplateCustomizer";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { sendQuoteEmail, logQuoteToSheet } from "@/services/gmailService";
 import { 
   FileText, 
   Settings, 
@@ -219,13 +221,6 @@ ${companyInfo.name}`;
     }
   };
 
-  // Get Google Apps Script URL from localStorage
-  const getGoogleAppsScriptUrl = (): string | null => {
-    // Try both possible localStorage keys
-    return localStorage.getItem('google_apps_script_url') || 
-           localStorage.getItem('gmail_script_url') || null;
-  };
-
   const handleSendQuote = async () => {
     if (!currentQuoteData) {
       toast({
@@ -239,7 +234,7 @@ ${companyInfo.name}`;
     setIsSending(true);
     
     try {
-      console.log('Starting email send process from Templates page');
+      console.log('Starting email send process from Templates page using gmailService');
       console.log('Selected template:', selectedTemplate);
       console.log('Output format:', outputFormat);
       console.log('Quote data:', currentQuoteData);
@@ -264,40 +259,29 @@ ${companyInfo.name}`;
 
       console.log('Sending to email:', toEmail);
 
-      // Get script URL using the SAME method as Processing Queue
-      const scriptUrl = getGoogleAppsScriptUrl();
-      if (!scriptUrl) {
-        throw new Error('Google Apps Script URL not configured. Please check your settings.');
+      // Use the same gmailService method as Processing Queue
+      const success = await sendQuoteEmail(toEmail, subject, quoteContent, currentQuoteData.id);
+
+      if (!success) {
+        throw new Error('Failed to send email via Gmail service');
       }
 
-      console.log('Using script URL:', scriptUrl);
+      console.log('Email sent successfully via gmailService');
 
-      console.log('Sending email with data:', {
-        to: toEmail,
-        subject: subject,
-        body: quoteContent,
-        format: outputFormat
-      });
-
-      // Use the EXACT SAME approach as Processing Queue (no-cors only)
-      console.log('Sending email via no-cors mode...');
-      
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'sendEmail',
-          to: toEmail,
-          subject: subject,
-          body: quoteContent,
-          emailId: currentQuoteData.id
-        })
-      });
-      
-      console.log('Email sent via no-cors mode');
+      // Log the quote to sheet (same as Processing Queue)
+      if (currentQuoteData.detectedProducts && currentQuoteData.detectedProducts.length > 0) {
+        const product = currentQuoteData.detectedProducts[0];
+        await logQuoteToSheet({
+          timestamp: new Date().toISOString(),
+          customerName: currentQuoteData.customerName || 'Unknown',
+          emailAddress: toEmail,
+          product: product.product || 'Unknown Product',
+          quantity: product.quantity || 1,
+          pricePerUnit: product.price || 100,
+          totalAmount: (product.quantity || 1) * (product.price || 100),
+          status: 'Sent'
+        });
+      }
 
       toast({
         title: "Quote Sent Successfully",
@@ -317,7 +301,7 @@ ${companyInfo.name}`;
         });
       }
 
-      console.log('Quote sent successfully from Templates page');
+      console.log('Quote sent successfully from Templates page using gmailService');
 
     } catch (error) {
       console.error('Error sending quote from Templates:', error);
@@ -332,6 +316,21 @@ ${companyInfo.name}`;
         description: errorMessage,
         variant: "destructive"
       });
+
+      // Log failed quote
+      if (currentQuoteData.detectedProducts && currentQuoteData.detectedProducts.length > 0) {
+        const product = currentQuoteData.detectedProducts[0];
+        await logQuoteToSheet({
+          timestamp: new Date().toISOString(),
+          customerName: currentQuoteData.customerName || 'Unknown',
+          emailAddress: currentQuoteData.customerEmail || 'Unknown',
+          product: product.product || 'Unknown Product',
+          quantity: product.quantity || 1,
+          pricePerUnit: product.price || 100,
+          totalAmount: (product.quantity || 1) * (product.price || 100),
+          status: 'Failed'
+        });
+      }
     } finally {
       setIsSending(false);
     }
