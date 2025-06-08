@@ -1,4 +1,3 @@
-
 import { EmailMessage } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -473,8 +472,14 @@ export const markEmailAsRead = async (emailId: string): Promise<boolean> => {
   }
 };
 
-// Enhanced quote email sending with reply capability
-export const sendQuoteEmail = async (to: string, subject: string, body: string, originalEmailId?: string): Promise<boolean> => {
+// Enhanced quote email sending with format support
+export const sendQuoteEmail = async (
+  to: string, 
+  subject: string, 
+  body: string, 
+  originalEmailId?: string,
+  format: 'email' | 'pdf' | 'print' = 'email'
+): Promise<boolean> => {
   try {
     const scriptUrl = await getGoogleAppsScriptUrl();
     if (!scriptUrl) {
@@ -482,7 +487,21 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string, 
       return false;
     }
 
-    console.log('Sending email via no-cors mode...');
+    console.log(`Sending email via no-cors mode with ${format} format...`);
+    
+    // Enhance email content based on format
+    let emailBody = body;
+    let emailSubject = subject;
+    
+    if (format === 'pdf') {
+      // Add PDF formatting indicators
+      emailSubject = `${subject} [PDF Format]`;
+      emailBody = `${body}\n\n--- This quotation is formatted for PDF generation ---\nPlease save or print this email for your records.`;
+    } else if (format === 'print') {
+      // Add print formatting indicators
+      emailSubject = `${subject} [Print Ready]`;
+      emailBody = `${body}\n\n--- This quotation is print-ready ---\nYou can print this email directly for your records.`;
+    }
     
     // Use the same no-cors approach as Processing Queue
     await fetch(scriptUrl, {
@@ -494,13 +513,14 @@ export const sendQuoteEmail = async (to: string, subject: string, body: string, 
       body: JSON.stringify({
         action: 'sendEmail',
         to: to,
-        subject: subject,
-        body: body,
+        subject: emailSubject,
+        body: emailBody,
+        format: format, // Pass format to Apps Script
         emailId: originalEmailId // For marking original as read
       })
     });
 
-    console.log('Email sent via no-cors mode');
+    console.log(`Email sent via no-cors mode with ${format} format`);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);

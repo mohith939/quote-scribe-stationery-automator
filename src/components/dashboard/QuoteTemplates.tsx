@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -242,11 +241,12 @@ ${companyInfo.name}`;
       // Generate the quote content based on selected template
       const quoteContent = generateQuoteContent(selectedTemplate, currentQuoteData);
       
-      // Create subject line
-      const subject = `Re: ${currentQuoteData.emailSubject || 'Your Inquiry'} - ${templates.find(t => t.id === selectedTemplate)?.name || 'Quotation'}`;
+      // Create subject line with format indicator
+      let subject = `Re: ${currentQuoteData.emailSubject || 'Your Inquiry'} - ${templates.find(t => t.id === selectedTemplate)?.name || 'Quotation'}`;
       
       console.log('Generated quote content:', quoteContent);
       console.log('Email subject:', subject);
+      console.log('Selected format:', outputFormat);
 
       // Extract email from the 'from' field (same logic as Processing Queue)
       const emailMatch = currentQuoteData.customerEmail?.match(/<(.+?)>/) || 
@@ -259,14 +259,20 @@ ${companyInfo.name}`;
 
       console.log('Sending to email:', toEmail);
 
-      // Use the same gmailService method as Processing Queue
-      const success = await sendQuoteEmail(toEmail, subject, quoteContent, currentQuoteData.id);
+      // Use the enhanced gmailService method with format support
+      const success = await sendQuoteEmail(
+        toEmail, 
+        subject, 
+        quoteContent, 
+        currentQuoteData.id,
+        outputFormat as 'email' | 'pdf' | 'print'
+      );
 
       if (!success) {
         throw new Error('Failed to send email via Gmail service');
       }
 
-      console.log('Email sent successfully via gmailService');
+      console.log(`Email sent successfully via gmailService with ${outputFormat} format`);
 
       // Log the quote to sheet (same as Processing Queue)
       if (currentQuoteData.detectedProducts && currentQuoteData.detectedProducts.length > 0) {
@@ -285,23 +291,10 @@ ${companyInfo.name}`;
 
       toast({
         title: "Quote Sent Successfully",
-        description: `Quote sent to ${currentQuoteData.customerName} via ${outputFormat}`,
+        description: `Quote sent to ${currentQuoteData.customerName} in ${outputFormat} format`,
       });
 
-      // Handle different output formats
-      if (outputFormat === 'pdf') {
-        toast({
-          title: "PDF Format Selected",
-          description: "Email sent with PDF formatting applied",
-        });
-      } else if (outputFormat === 'print') {
-        toast({
-          title: "Print Format Selected",
-          description: "Print-ready format sent via email",
-        });
-      }
-
-      console.log('Quote sent successfully from Templates page using gmailService');
+      console.log(`Quote sent successfully from Templates page using gmailService with ${outputFormat} format`);
 
     } catch (error) {
       console.error('Error sending quote from Templates:', error);
