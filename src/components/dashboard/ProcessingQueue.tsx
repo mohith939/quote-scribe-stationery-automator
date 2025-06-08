@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -216,20 +215,20 @@ Call to confirm order.`
         format: outputFormat
       });
 
-      const formData = new URLSearchParams();
-      formData.append('action', 'sendEmail');
-      formData.append('to', item.customerInfo.email);
-      formData.append('subject', emailSubject);
-      formData.append('body', emailBody);
-      formData.append('format', outputFormat);
-      formData.append('emailId', item.email.id);
-
+      // FIXED: Send as JSON instead of form data
       const response = await fetch(scriptUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: formData.toString()
+        body: JSON.stringify({
+          action: 'sendEmail',
+          to: item.customerInfo.email,
+          subject: emailSubject,
+          body: emailBody,
+          format: outputFormat,
+          emailId: item.email.id
+        })
       });
 
       console.log('Response status:', response.status);
