@@ -19,6 +19,10 @@ interface QuoteTemplate {
   preview: string;
 }
 
+interface QuoteTemplatesProps {
+  quoteData?: any;
+}
+
 const templates: QuoteTemplate[] = [
   {
     id: "formal-business",
@@ -50,7 +54,7 @@ const templates: QuoteTemplate[] = [
   }
 ];
 
-export function QuoteTemplates() {
+export function QuoteTemplates({ quoteData }: QuoteTemplatesProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("formal-business");
@@ -64,7 +68,7 @@ export function QuoteTemplates() {
     return user ? `${key}_${user.id}` : key;
   };
 
-  // Load saved template settings
+  // Load saved template settings and quote data
   useEffect(() => {
     if (user) {
       const savedTemplate = localStorage.getItem(getUserStorageKey('selected_template'));
@@ -76,8 +80,31 @@ export function QuoteTemplates() {
       if (savedFormat) {
         setOutputFormat(savedFormat as 'email' | 'pdf' | 'print');
       }
+
+      // Load quote data if available
+      if (!quoteData) {
+        const storedQuoteData = localStorage.getItem(getUserStorageKey('current_quote_data'));
+        if (storedQuoteData) {
+          try {
+            const parsedQuoteData = JSON.parse(storedQuoteData);
+            console.log('Loaded quote data from storage:', parsedQuoteData);
+          } catch (error) {
+            console.error('Error parsing stored quote data:', error);
+          }
+        }
+      }
     }
-  }, [user]);
+  }, [user, quoteData]);
+
+  // Show notification when quote data is received
+  useEffect(() => {
+    if (quoteData) {
+      toast({
+        title: "Quote Data Loaded",
+        description: `Template editor opened for ${quoteData.customerName}`,
+      });
+    }
+  }, [quoteData, toast]);
 
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -128,6 +155,28 @@ export function QuoteTemplates() {
     }
   };
 
+  // Get preview text with actual data if available
+  const getPreviewText = () => {
+    if (!selectedTemplate) return '';
+    
+    let preview = selectedTemplate.preview;
+    
+    if (quoteData) {
+      const productList = quoteData.detectedProducts?.map((p: any) => p.product).join(', ') || 'Sample Product';
+      const totalQuantity = quoteData.detectedProducts?.reduce((sum: number, p: any) => sum + (p.quantity || 1), 0) || 1;
+      
+      preview = preview
+        .replace(/{customer}/g, quoteData.customerName || 'Customer Name')
+        .replace(/{product}/g, productList)
+        .replace(/{quantity}/g, totalQuantity.toString())
+        .replace(/{price_per_unit}/g, '100')
+        .replace(/{total_amount}/g, (totalQuantity * 100).toString())
+        .replace(/{date}/g, new Date().toLocaleDateString());
+    }
+    
+    return preview;
+  };
+
   return (
     <>
       <div className="space-y-6">
@@ -135,7 +184,14 @@ export function QuoteTemplates() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Templates Manager</h2>
-            <p className="text-slate-600 mt-1">Customize your PDF quotation templates with company branding</p>
+            <p className="text-slate-600 mt-1">
+              Customize your PDF quotation templates with company branding
+              {quoteData && (
+                <span className="ml-2 text-blue-600 font-medium">
+                  • Editing quote for {quoteData.customerName}
+                </span>
+              )}
+            </p>
           </div>
           <Button 
             onClick={handleSaveSettings}
@@ -224,6 +280,7 @@ export function QuoteTemplates() {
               </CardTitle>
               <CardDescription>
                 Preview how your PDF quotation will appear to customers
+                {quoteData && <span className="text-blue-600"> • Live data from {quoteData.customerName}</span>}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -294,14 +351,14 @@ export function QuoteTemplates() {
                             <div>
                               <h3 className="font-semibold text-blue-600 mb-2">To:</h3>
                               <div className="text-slate-700">
-                                <p>{"{customer_name}"}</p>
-                                <p>{"{customer_email}"}</p>
+                                <p>{quoteData?.customerName || "{customer_name}"}</p>
+                                <p>{quoteData?.customerEmail || "{customer_email}"}</p>
                               </div>
                             </div>
                           </div>
                           
                           <div className="font-mono text-sm whitespace-pre-line leading-relaxed text-slate-700 bg-slate-50 p-4 rounded-lg border-l-4 border-blue-500">
-                            {selectedTemplate.preview}
+                            {getPreviewText()}
                           </div>
                           
                           <div className="border-t pt-4 text-center">
@@ -316,6 +373,11 @@ export function QuoteTemplates() {
                   <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
                     <p className="text-sm text-green-800">
                       <strong>Active Template:</strong> This template will be used automatically when sending responses from the Processing Queue. Changes are saved automatically and reflected immediately.
+                      {quoteData && (
+                        <span className="block mt-1 font-medium">
+                          Currently editing quote for: {quoteData.customerName} ({quoteData.customerEmail})
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -332,6 +394,11 @@ export function QuoteTemplates() {
                 <h3 className="font-semibold text-slate-800">Current Configuration</h3>
                 <p className="text-sm text-slate-600 mt-1">
                   Using <span className="font-medium">{selectedTemplate?.name}</span> template with <span className="font-medium">{outputFormat}</span> output format
+                  {quoteData && (
+                    <span className="block text-blue-600 font-medium">
+                      Quote data loaded for {quoteData.customerName}
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex gap-3">

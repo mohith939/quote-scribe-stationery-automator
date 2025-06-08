@@ -10,9 +10,20 @@ import { useState } from "react";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("email-inbox");
+  const [quoteData, setQuoteData] = useState(null);
+
+  const handleSwitchToTemplates = (data: any) => {
+    console.log('Switching to templates with data:', data);
+    setQuoteData(data);
+    setActiveTab("quote-templates");
+  };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    // Clear quote data when switching away from templates
+    if (tab !== "quote-templates") {
+      setQuoteData(null);
+    }
   };
 
   return (
@@ -21,10 +32,10 @@ const Index = () => {
         <EmailInboxReal />
       </TabsContent>
       <TabsContent value="processing-queue" className="mt-0">
-        <ProcessingQueue />
+        <ProcessingQueue onSwitchToTemplates={handleSwitchToTemplates} />
       </TabsContent>
       <TabsContent value="quote-templates" className="mt-0">
-        <QuoteTemplates />
+        <QuoteTemplates quoteData={quoteData} />
       </TabsContent>
       <TabsContent value="quote-history" className="mt-0">
         <QuoteHistory />

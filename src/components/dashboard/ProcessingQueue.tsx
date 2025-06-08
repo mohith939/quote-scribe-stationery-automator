@@ -91,13 +91,19 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
 
     console.log('Passing quote data to templates:', quoteData);
 
+    // Store quote data in localStorage for templates page to access
+    if (user) {
+      const quoteDataKey = getUserStorageKey('current_quote_data');
+      localStorage.setItem(quoteDataKey, JSON.stringify(quoteData));
+    }
+
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
     }
 
     toast({
-      title: "Redirecting to Quote Templates",
-      description: `Opening quote template for ${item.customerInfo.name}`,
+      title: "Opening Template Editor",
+      description: `Loading quote template for ${item.customerInfo.name}`,
     });
   };
 
@@ -107,9 +113,11 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       
       // Get selected template from localStorage with fallback
       const templateKey = getUserStorageKey('selected_template');
+      const outputFormatKey = getUserStorageKey('output_format');
       const selectedTemplate = localStorage.getItem(templateKey) || 'formal-business';
+      const outputFormat = localStorage.getItem(outputFormatKey) || 'email';
       
-      console.log('Using template:', selectedTemplate);
+      console.log('Using template:', selectedTemplate, 'Output format:', outputFormat);
       
       // Get template content based on selected template
       const templates = {
@@ -204,7 +212,8 @@ Call to confirm order.`
       console.log('Sending email with data:', {
         to: item.customerInfo.email,
         subject: emailSubject,
-        body: emailBody
+        body: emailBody,
+        format: outputFormat
       });
 
       const formData = new URLSearchParams();
@@ -212,6 +221,7 @@ Call to confirm order.`
       formData.append('to', item.customerInfo.email);
       formData.append('subject', emailSubject);
       formData.append('body', emailBody);
+      formData.append('format', outputFormat);
       formData.append('emailId', item.email.id);
 
       const response = await fetch(scriptUrl, {
@@ -243,12 +253,12 @@ Call to confirm order.`
         throw new Error(result.error || 'Failed to send email');
       }
 
-      // Mark as completed
-      handleCompleteQuote(item.id);
+      // Remove item from queue after successful sending
+      setQueueItems(items => items.filter(queueItem => queueItem.id !== item.id));
       
       toast({
         title: "Response Sent Successfully",
-        description: `Email response sent to ${item.customerInfo.name}`,
+        description: `Email response sent to ${item.customerInfo.name} via ${outputFormat}`,
       });
 
     } catch (error) {
