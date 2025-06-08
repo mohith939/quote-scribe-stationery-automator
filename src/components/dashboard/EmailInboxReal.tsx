@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface EnhancedEmailMessage extends EmailMessage {
   classification: EmailClassification;
+  fullBody?: string; // Store full body separately
   attachments?: Array<{
     filename: string;
     mimeType: string;
@@ -41,6 +43,8 @@ const compressEmailData = (email: EnhancedEmailMessage): any => {
     date: email.date,
     // Keep only essential body content (first 500 chars)
     body: email.body?.substring(0, 500) || '',
+    // Store full body separately for show more functionality
+    fullBody: email.fullBody || email.body,
     snippet: email.snippet,
     classification: {
       isQuoteRequest: email.classification.isQuoteRequest,
@@ -143,6 +147,8 @@ export function EmailInboxReal() {
           // Reconstruct full email objects from compressed data
           const enhancedEmails = parsedEmails.map((email: any) => ({
             ...email,
+            // Ensure fullBody is available for expansion
+            fullBody: email.fullBody || email.body,
             classification: email.classification || classifyEmail(email, products)
           }));
           // Sort by date descending (newest first)
@@ -221,6 +227,7 @@ export function EmailInboxReal() {
       // Classify and enhance emails
       const enhancedEmails: EnhancedEmailMessage[] = fetchedEmails.map((email: EmailMessage) => ({
         ...email,
+        fullBody: email.body, // Store full body for expansion
         classification: classifyEmail(email, products),
         attachments: email.attachments || []
       }));
@@ -333,9 +340,9 @@ export function EmailInboxReal() {
         id: email.id,
         from: email.from,
         subject: email.subject,
-        body: email.body,
+        body: email.fullBody || email.body, // Use full body for processing
         date: email.date,
-        snippet: email.snippet || email.body?.substring(0, 150) + '...'
+        snippet: email.snippet || (email.fullBody || email.body)?.substring(0, 150) + '...'
       },
       customerInfo: {
         name: extractSenderName(email.from),
@@ -419,6 +426,21 @@ export function EmailInboxReal() {
         description: "All email data has been cleared",
       });
     }
+  };
+
+  // Function to get the content to display for an email
+  const getEmailContent = (email: EnhancedEmailMessage, isExpanded: boolean) => {
+    const fullContent = email.fullBody || email.body || '';
+    if (isExpanded || fullContent.length <= 150) {
+      return fullContent;
+    }
+    return fullContent.substring(0, 150) + '...';
+  };
+
+  // Function to check if email needs show more button
+  const needsShowMore = (email: EnhancedEmailMessage) => {
+    const fullContent = email.fullBody || email.body || '';
+    return fullContent.length > 150;
   };
 
   // Separate emails by classification
@@ -551,18 +573,15 @@ export function EmailInboxReal() {
                       </div>
                       
                       <div className="text-sm text-slate-600 bg-white p-2 rounded mb-2">
-                        <p>
-                          {expandedEmails.has(email.id) 
-                            ? email.body 
-                            : `${email.body?.substring(0, 150)}...`
-                          }
+                        <p className="whitespace-pre-wrap">
+                          {getEmailContent(email, expandedEmails.has(email.id))}
                         </p>
-                        {email.body && email.body.length > 150 && (
+                        {needsShowMore(email) && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleEmailExpansion(email.id)}
-                            className="text-blue-600 p-0 h-auto"
+                            className="text-blue-600 p-0 h-auto mt-2"
                           >
                             {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
                           </Button>
@@ -646,18 +665,15 @@ export function EmailInboxReal() {
                       </div>
                       
                       <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-2">
-                        <p>
-                          {expandedEmails.has(email.id) 
-                            ? email.body 
-                            : `${email.body?.substring(0, 150)}...`
-                          }
+                        <p className="whitespace-pre-wrap">
+                          {getEmailContent(email, expandedEmails.has(email.id))}
                         </p>
-                        {email.body && email.body.length > 150 && (
+                        {needsShowMore(email) && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleEmailExpansion(email.id)}
-                            className="text-blue-600 p-0 h-auto"
+                            className="text-blue-600 p-0 h-auto mt-2"
                           >
                             {expandedEmails.has(email.id) ? 'Show Less' : 'Show More'}
                           </Button>
