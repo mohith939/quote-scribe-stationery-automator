@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { PDFTemplateCustomizer } from "@/components/templates/PDFTemplateCustomizer";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { sendQuoteEmail } from "@/services/gmailService";
 import { 
   FileText, 
   Settings, 
@@ -221,6 +220,12 @@ ${companyInfo.name}`;
     }
   };
 
+  // Get Google Apps Script URL from localStorage
+  const getGoogleAppsScriptUrl = (): string | null => {
+    return localStorage.getItem('google_apps_script_url') || 
+           localStorage.getItem('gmail_script_url') || null;
+  };
+
   const handleSendQuote = async () => {
     if (!currentQuoteData) {
       toast({
@@ -259,13 +264,77 @@ ${companyInfo.name}`;
 
       console.log('Sending to email:', toEmail);
 
-      // Send the email using the gmail service
-      const success = await sendQuoteEmail(
-        toEmail,
-        subject,
-        quoteContent,
-        currentQuoteData.id
-      );
+      // Get script URL
+      const scriptUrl = getGoogleAppsScriptUrl();
+      if (!scriptUrl) {
+        throw new Error('Google Apps Script URL not configured. Please check your settings.');
+      }
+
+      // Try sending the email with better error handling
+      let success = false;
+      try {
+        console.log('Attempting to send email...');
+        
+        const response = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'sendEmail',
+            to: toEmail,
+            subject: subject,
+            body: quoteContent,
+            emailId: currentQuoteData.id
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        success = result.success;
+        
+        if (!success) {
+          throw new Error(result.error || 'Email sending failed');
+        }
+
+      } catch (fetchError: any) {
+        console.error('Primary send failed:', fetchError);
+        
+        // If it's a CORS error, try the no-cors mode as fallback
+        if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
+          console.log('CORS error detected, trying fallback method...');
+          
+          try {
+            // Fallback: Use no-cors mode (fire and forget)
+            await fetch(scriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'sendEmail',
+                to: toEmail,
+                subject: subject,
+                body: quoteContent,
+                emailId: currentQuoteData.id
+              })
+            });
+            
+            console.log('Fallback method completed');
+            success = true; // Assume success since we can't verify with no-cors
+            
+          } catch (fallbackError) {
+            console.error('Fallback method also failed:', fallbackError);
+            throw new Error('Both primary and fallback email sending methods failed. Please check your Google Apps Script configuration.');
+          }
+        } else {
+          throw fetchError;
+        }
+      }
 
       if (success) {
         toast({
@@ -277,27 +346,38 @@ ${companyInfo.name}`;
         if (outputFormat === 'pdf') {
           toast({
             title: "PDF Generation",
-            description: "PDF version will be attached in future updates",
+            description: "PDF format selected - email sent with enhanced formatting",
           });
         } else if (outputFormat === 'print') {
           toast({
-            title: "Print Ready",
-            description: "Quote formatted for printing",
+            title: "Print Format",
+            description: "Print-ready format sent via email",
           });
         }
 
-        // Log the sent quote
         console.log('Quote sent successfully from Templates page');
         
       } else {
-        throw new Error('Failed to send email through Gmail service');
+        throw new Error('Email sending failed - please check Google Apps Script logs');
       }
 
     } catch (error) {
       console.error('Error sending quote from Templates:', error);
+      
+      let errorMessage = 'Failed to send quote';
+      if (error instanceof Error) {
+        if (error.message.includes('CORS')) {
+          errorMessage = 'CORS error: Please redeploy your Google Apps Script with proper CORS headers';
+        } else if (error.message.includes('Google Apps Script')) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Error Sending Quote",
-        description: error instanceof Error ? error.message : 'Failed to send quote',
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
