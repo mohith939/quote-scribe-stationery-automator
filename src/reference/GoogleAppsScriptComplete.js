@@ -1,19 +1,24 @@
+
 /**
- * COMPLETE Google Apps Script for QuoteScribe - FIXED CORS VERSION
- * This version includes proper CORS handling for all requests including preflight
+ * COMPLETE Google Apps Script for QuoteScribe - LATEST CORS FIXED VERSION
+ * This version includes ROBUST CORS handling for all requests including preflight
  * 
  * DEPLOYMENT INSTRUCTIONS (CRITICAL):
  * 1. Go to script.google.com
  * 2. Create a new project and paste this ENTIRE code
- * 3. Save the project with a meaningful name
+ * 3. Save the project with a meaningful name like "QuoteScribe Email Handler v2"
  * 4. Click "Deploy" → "New deployment"
  * 5. Select type: "Web app"
- * 6. Execute as: "Me"
+ * 6. Execute as: "Me" (YOUR EMAIL)
  * 7. Who has access: "Anyone" (NOT "Anyone with Google account")
  * 8. Click "Deploy"
- * 9. Copy the web app URL and use it in QuoteScribe
+ * 9. Copy the NEW web app URL and update it in QuoteScribe settings
+ * 10. Test the connection in QuoteScribe
  * 
- * If you still get CORS errors, redeploy as a new version
+ * IMPORTANT: If you still get CORS errors after deployment:
+ * - Make sure you deployed as "Anyone" not "Anyone with Google account"
+ * - Try deploying as a NEW version (not updating existing)
+ * - Wait 2-3 minutes after deployment before testing
  */
 
 // Configuration
@@ -25,18 +30,21 @@ const CONFIG = {
   maxEmailsToFetch: 100
 };
 
-// FIXED: Handle OPTIONS requests for CORS preflight with proper headers
+// CRITICAL: Handle OPTIONS requests for CORS preflight - THIS MUST BE FIRST
 function doOptions(e) {
+  console.log('OPTIONS request received - handling CORS preflight');
+  
   return ContentService
     .createTextOutput('')
     .setMimeType(ContentService.MimeType.TEXT)
     .setHeader('Access-Control-Allow-Origin', '*')
     .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-    .setHeader('Access-Control-Max-Age', '86400');
+    .setHeader('Access-Control-Max-Age', '86400')
+    .setHeader('Access-Control-Allow-Credentials', 'false');
 }
 
-// FIXED: Proper CORS response creation with all required headers
+// ENHANCED: Proper CORS response creation with all required headers
 function createCORSResponse(data) {
   const jsonData = typeof data === 'string' ? data : JSON.stringify(data);
   
@@ -45,90 +53,119 @@ function createCORSResponse(data) {
     .setMimeType(ContentService.MimeType.JSON)
     .setHeader('Access-Control-Allow-Origin', '*')
     .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+    .setHeader('Access-Control-Allow-Credentials', 'false')
+    .setHeader('Cache-Control', 'no-cache');
 }
 
 function doGet(e) {
   try {
+    console.log('doGet called at:', new Date().toISOString());
     const params = e && e.parameter ? e.parameter : {};
     const action = params.action || 'default';
     
-    Logger.log('doGet called with action: ' + action);
+    console.log('doGet action:', action);
+    console.log('doGet params:', JSON.stringify(params));
     
     let responseData;
     switch (action) {
       case 'getAllUnreadEmails':
       case 'getUnreadEmails':
       case 'fetchUnreadEmails':
-        responseData = getAllUnreadEmails(params.maxResults);
+        const maxResults = parseInt(params.maxResults) || CONFIG.maxEmailsToFetch;
+        console.log('Fetching emails with max results:', maxResults);
+        responseData = getAllUnreadEmails(maxResults);
         break;
+        
       case 'testConnection':
+        console.log('Testing connection...');
         responseData = testConnection();
         break;
+        
       case 'getDashboardStats':
+        console.log('Getting dashboard stats...');
         responseData = getDashboardStats();
         break;
+        
       default:
         responseData = {
           success: true,
-          message: 'QuoteScribe Gmail Integration Active - ' + new Date().toISOString(),
+          message: 'QuoteScribe Gmail Integration Active - CORS FIXED - ' + new Date().toISOString(),
           timestamp: new Date().toISOString(),
-          availableActions: ['getAllUnreadEmails', 'getUnreadEmails', 'fetchUnreadEmails', 'testConnection']
+          availableActions: ['getAllUnreadEmails', 'getUnreadEmails', 'fetchUnreadEmails', 'testConnection', 'getDashboardStats'],
+          corsEnabled: true,
+          version: 'v2.0-cors-fixed'
         };
     }
     
+    console.log('doGet response prepared, success:', responseData.success);
     return createCORSResponse(responseData);
     
   } catch (error) {
-    Logger.log('doGet error: ' + error.toString());
+    console.error('doGet error:', error.toString());
     return createCORSResponse({
       success: false,
       error: 'doGet error: ' + error.toString(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      corsEnabled: true
     });
   }
 }
 
 function doPost(e) {
   try {
+    console.log('doPost called at:', new Date().toISOString());
+    
     if (!e || !e.postData || !e.postData.contents) {
       throw new Error('No POST data received');
     }
     
+    console.log('Raw POST data:', e.postData.contents);
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
     
-    Logger.log('doPost called with action: ' + action);
-    Logger.log('POST data: ' + JSON.stringify(data));
+    console.log('doPost action:', action);
+    console.log('doPost data:', JSON.stringify(data));
     
     let responseData;
     switch (action) {
       case 'markAsRead':
+        console.log('Marking email as read:', data.emailId);
         responseData = markEmailAsRead(data.emailId);
         break;
+        
       case 'sendEmail':
+        console.log('Sending email to:', data.to);
         responseData = sendQuoteEmail(data.to, data.subject, data.body, data.emailId);
         break;
+        
       case 'logQuote':
+        console.log('Logging quote to sheet');
         responseData = logQuoteToSheet(data.quoteData);
         break;
+        
       case 'processEmail':
+        console.log('Processing email:', data.emailId);
         responseData = processEmailById(data.emailId);
         break;
+        
       default:
         responseData = {
           success: false, 
-          error: 'Unknown action: ' + action
+          error: 'Unknown action: ' + action,
+          availableActions: ['markAsRead', 'sendEmail', 'logQuote', 'processEmail']
         };
     }
     
+    console.log('doPost response prepared, success:', responseData.success);
     return createCORSResponse(responseData);
     
   } catch (error) {
-    Logger.log('doPost error: ' + error.toString());
+    console.error('doPost error:', error.toString());
     return createCORSResponse({
       success: false,
-      error: 'Error processing request: ' + error.toString()
+      error: 'Error processing POST request: ' + error.toString(),
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -136,19 +173,19 @@ function doPost(e) {
 function getAllUnreadEmails(maxResults) {
   try {
     const limit = parseInt(maxResults) || CONFIG.maxEmailsToFetch;
-    Logger.log('=== STARTING EMAIL FETCH ===');
-    Logger.log('Fetching emails with limit: ' + limit);
+    console.log('=== STARTING EMAIL FETCH ===');
+    console.log('Fetching emails with limit:', limit);
     
     let threads = [];
     let emailCount = 0;
     
     try {
       threads = GmailApp.search('is:unread in:inbox', 0, limit);
-      Logger.log('Found ' + threads.length + ' unread threads in inbox');
+      console.log('Found', threads.length, 'unread threads in inbox');
     } catch (searchError) {
-      Logger.log('Inbox search failed, trying alternative: ' + searchError.toString());
+      console.log('Inbox search failed, trying alternative:', searchError.toString());
       threads = GmailApp.search('is:unread', 0, limit);
-      Logger.log('Alternative search found ' + threads.length + ' unread threads');
+      console.log('Alternative search found', threads.length, 'unread threads');
     }
     
     const emails = [];
@@ -157,7 +194,7 @@ function getAllUnreadEmails(maxResults) {
       try {
         const thread = threads[i];
         const messages = thread.getMessages();
-        Logger.log('Processing thread ' + (i + 1) + ' with ' + messages.length + ' messages');
+        console.log('Processing thread', (i + 1), 'with', messages.length, 'messages');
         
         for (let j = 0; j < messages.length; j++) {
           const message = messages[j];
@@ -212,20 +249,20 @@ function getAllUnreadEmails(maxResults) {
               };
               
               emails.push(emailObj);
-              Logger.log('Processed email ' + emailCount + ': ' + subject.substring(0, 50));
+              console.log('Processed email', emailCount + ':', subject.substring(0, 50));
               
             } catch (messageError) {
-              Logger.log('Error processing message ' + j + ': ' + messageError.toString());
+              console.error('Error processing message', j + ':', messageError.toString());
             }
           }
         }
       } catch (threadError) {
-        Logger.log('Error processing thread ' + i + ': ' + threadError.toString());
+        console.error('Error processing thread', i + ':', threadError.toString());
       }
     }
     
-    Logger.log('=== EMAIL FETCH COMPLETE ===');
-    Logger.log('Total emails found: ' + emails.length);
+    console.log('=== EMAIL FETCH COMPLETE ===');
+    console.log('Total emails found:', emails.length);
     
     return {
       success: true,
@@ -234,19 +271,22 @@ function getAllUnreadEmails(maxResults) {
       totalCount: emails.length,
       threadsProcessed: threads.length,
       hasMoreEmails: threads.length >= limit,
+      corsEnabled: true,
       debugInfo: {
         searchMethod: 'inbox_search',
         emailsProcessed: emailCount,
-        limit: limit
+        limit: limit,
+        version: 'v2.0-cors-fixed'
       }
     };
     
   } catch (error) {
-    Logger.log('FATAL ERROR in getAllUnreadEmails: ' + error.toString());
+    console.error('FATAL ERROR in getAllUnreadEmails:', error.toString());
     return {
       success: false,
       error: 'Failed to fetch emails: ' + error.toString(),
       emails: [],
+      corsEnabled: true,
       debugInfo: {
         errorDetails: error.toString(),
         timestamp: new Date().toISOString()
@@ -328,12 +368,12 @@ function calculateConfidence(isQuoteRequest, products, quantities) {
 
 function testConnection() {
   try {
-    Logger.log('=== TESTING CONNECTION ===');
+    console.log('=== TESTING CONNECTION ===');
     
     const unreadThreads = GmailApp.search('is:unread in:inbox', 0, 5);
     let unreadCount = 0;
     
-    Logger.log('Found ' + unreadThreads.length + ' threads for testing');
+    console.log('Found', unreadThreads.length, 'threads for testing');
     
     for (let i = 0; i < unreadThreads.length; i++) {
       const messages = unreadThreads[i].getMessages();
@@ -344,11 +384,11 @@ function testConnection() {
       }
     }
     
-    Logger.log('Total unread emails: ' + unreadCount);
+    console.log('Total unread emails:', unreadCount);
     
     return {
       success: true,
-      message: 'Google Apps Script connection successful - CORS FIXED',
+      message: 'Google Apps Script connection successful - CORS FIXED v2.0',
       timestamp: new Date().toISOString(),
       services: {
         gmail: true,
@@ -362,6 +402,7 @@ function testConnection() {
         maxEmailsToFetch: CONFIG.maxEmailsToFetch
       },
       corsEnabled: true,
+      version: 'v2.0-cors-fixed',
       debugInfo: {
         threadsFound: unreadThreads.length,
         emailsFound: unreadCount,
@@ -370,42 +411,47 @@ function testConnection() {
     };
     
   } catch (error) {
-    Logger.log('Connection test FAILED: ' + error.toString());
+    console.error('Connection test FAILED:', error.toString());
     return {
       success: false,
       error: 'Connection test failed: ' + error.toString(),
       timestamp: new Date().toISOString(),
-      corsEnabled: true
+      corsEnabled: true,
+      version: 'v2.0-cors-fixed'
     };
   }
 }
 
 function markEmailAsRead(emailId) {
   try {
-    Logger.log('Marking email as read: ' + emailId);
+    console.log('Marking email as read:', emailId);
     const message = GmailApp.getMessageById(emailId);
     message.markRead();
     
     return {
       success: true,
-      message: 'Email marked as read successfully'
+      message: 'Email marked as read successfully',
+      emailId: emailId,
+      timestamp: new Date().toISOString()
     };
     
   } catch (error) {
-    Logger.log('Error marking email as read: ' + error.toString());
+    console.error('Error marking email as read:', error.toString());
     return {
       success: false,
-      error: 'Failed to mark email as read: ' + error.toString()
+      error: 'Failed to mark email as read: ' + error.toString(),
+      emailId: emailId
     };
   }
 }
 
 function sendQuoteEmail(to, subject, body, originalEmailId) {
   try {
-    Logger.log('=== SENDING EMAIL ===');
-    Logger.log('To: ' + to);
-    Logger.log('Subject: ' + subject);
-    Logger.log('Body length: ' + body.length);
+    console.log('=== SENDING EMAIL ===');
+    console.log('To:', to);
+    console.log('Subject:', subject);
+    console.log('Body length:', body.length);
+    console.log('Original email ID:', originalEmailId);
     
     // Clean up the body - remove extra escaping
     const cleanBody = body.replace(/\\n/g, '\n');
@@ -417,37 +463,40 @@ function sendQuoteEmail(to, subject, body, originalEmailId) {
       htmlBody: fullBody.replace(/\n/g, '<br>')
     });
     
+    console.log('Email sent successfully to:', to);
+    
     // Mark original email as read if provided
     if (originalEmailId) {
       try {
         const originalMessage = GmailApp.getMessageById(originalEmailId);
         originalMessage.markRead();
-        Logger.log('Original email marked as read');
+        console.log('Original email marked as read:', originalEmailId);
       } catch (e) {
-        Logger.log('Could not mark original email as read: ' + e.toString());
+        console.log('Could not mark original email as read:', e.toString());
       }
     }
     
-    Logger.log('Email sent successfully to: ' + to);
     return {
       success: true,
       message: 'Email sent successfully',
       details: {
         to: to,
         subject: subject,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        originalEmailMarkedRead: !!originalEmailId
       }
     };
     
   } catch (error) {
-    Logger.log('Error sending email: ' + error.toString());
+    console.error('Error sending email:', error.toString());
     return {
       success: false,
       error: 'Failed to send email: ' + error.toString(),
       details: {
         to: to,
         subject: subject,
-        errorMessage: error.toString()
+        errorMessage: error.toString(),
+        timestamp: new Date().toISOString()
       }
     };
   }
@@ -489,7 +538,7 @@ function logQuoteToSheet(quoteData) {
     };
     
   } catch (error) {
-    Logger.log('Error logging to sheet: ' + error.toString());
+    console.error('Error logging to sheet:', error.toString());
     return {
       success: false,
       error: 'Failed to log quote: ' + error.toString()
@@ -527,7 +576,7 @@ function processEmailById(emailId) {
     };
     
   } catch (error) {
-    Logger.log('Error processing email: ' + error.toString());
+    console.error('Error processing email:', error.toString());
     return {
       success: false,
       error: error.toString()
@@ -561,11 +610,13 @@ function getDashboardStats() {
         quoteRequests: quoteRequestCount,
         processedToday: 0,
         successRate: 85
-      }
+      },
+      corsEnabled: true,
+      version: 'v2.0-cors-fixed'
     };
     
   } catch (error) {
-    Logger.log('Error getting dashboard stats: ' + error.toString());
+    console.error('Error getting dashboard stats:', error.toString());
     return {
       success: false,
       error: error.toString()
