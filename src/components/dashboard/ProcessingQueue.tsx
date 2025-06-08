@@ -1,12 +1,12 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Edit, Trash2, User, Package, CheckCircle, Send, Mail } from "lucide-react";
+import { Clock, Edit, Trash2, User, Package, CheckCircle, Send, Mail, Eye } from "lucide-react";
 import { ProcessingQueueItem } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { QuotePreviewModal } from "./QuotePreviewModal";
 
 interface ProcessingQueueProps {
   onSwitchToTemplates?: (quoteData: any) => void;
@@ -16,6 +16,8 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [queueItems, setQueueItems] = useState<ProcessingQueueItem[]>([]);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ProcessingQueueItem | null>(null);
 
   // Create user-specific storage key
   const getUserStorageKey = (key: string) => {
@@ -79,6 +81,11 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
     }
   }, [queueItems, user]);
 
+  const handlePreviewQuote = (item: ProcessingQueueItem) => {
+    setSelectedItem(item);
+    setShowPreviewModal(true);
+  };
+
   const handleEditQuote = (item: ProcessingQueueItem) => {
     const quoteData = {
       customerName: item.customerInfo.name,
@@ -89,7 +96,7 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
       emailId: item.id
     };
 
-    console.log('Passing quote data to templates:', quoteData);
+    console.log('Navigating to templates with data:', quoteData);
 
     if (onSwitchToTemplates) {
       onSwitchToTemplates(quoteData);
@@ -105,13 +112,13 @@ export function ProcessingQueue({ onSwitchToTemplates }: ProcessingQueueProps) {
     try {
       console.log('Starting email send process for:', item.customerInfo.name);
       
-      // Get selected template from localStorage with fallback
       const templateKey = getUserStorageKey('selected_template');
       const selectedTemplate = localStorage.getItem(templateKey) || 'formal-business';
+      const outputFormat = localStorage.getItem(getUserStorageKey('output_format')) || 'pdf';
       
-      console.log('Using template:', selectedTemplate);
+      console.log('Using template:', selectedTemplate, 'Format:', outputFormat);
       
-      // Get template content based on selected template
+      // Get selected template from localStorage with fallback
       const templates = {
         'formal-business': {
           subject: 'Re: {original_subject} - Quotation',
@@ -204,7 +211,8 @@ Call to confirm order.`
       console.log('Sending email with data:', {
         to: item.customerInfo.email,
         subject: emailSubject,
-        body: emailBody
+        body: emailBody,
+        format: outputFormat
       });
 
       const formData = new URLSearchParams();
@@ -213,6 +221,7 @@ Call to confirm order.`
       formData.append('subject', emailSubject);
       formData.append('body', emailBody);
       formData.append('emailId', item.email.id);
+      formData.append('format', outputFormat); // Include format
 
       const response = await fetch(scriptUrl, {
         method: 'POST',
@@ -243,12 +252,12 @@ Call to confirm order.`
         throw new Error(result.error || 'Failed to send email');
       }
 
-      // Mark as completed
-      handleCompleteQuote(item.id);
+      // Remove from queue after successful send
+      handleRemoveItem(item.id);
       
       toast({
         title: "Response Sent Successfully",
-        description: `Email response sent to ${item.customerInfo.name}`,
+        description: `${outputFormat.toUpperCase()} response sent to ${item.customerInfo.name}`,
       });
 
     } catch (error) {
@@ -329,147 +338,160 @@ Call to confirm order.`
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Clock className="h-5 w-5 text-blue-600" />
-          <div>
-            <CardTitle>Processing Queue</CardTitle>
-            <CardDescription>
-              Emails ready for quote generation and processing (optimized storage)
-            </CardDescription>
+    <>
+      <Card className="w-full bg-gradient-to-br from-white to-slate-50 shadow-xl border-0">
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+          <div className="flex items-center gap-3">
+            <Clock className="h-6 w-6" />
+            <div>
+              <CardTitle className="text-xl">Processing Queue</CardTitle>
+              <CardDescription className="text-blue-100">
+                Emails ready for quote generation and processing
+              </CardDescription>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent>
-        {queueItems.length === 0 ? (
-          <div className="text-center py-12 text-slate-500">
-            <Clock className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-            <h3 className="text-lg font-medium mb-2">No items in queue</h3>
-            <p className="text-sm">
-              Process quote request emails from your inbox to see them here
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                {queueItems.length} Item{queueItems.length !== 1 ? 's' : ''} in Queue
-              </Badge>
-              {queueItems.length >= MAX_QUEUE_ITEMS && (
-                <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
-                  Queue limit reached (max {MAX_QUEUE_ITEMS})
+        </CardHeader>
+        
+        <CardContent className="p-6">
+          {queueItems.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <Clock className="h-16 w-16 mx-auto mb-6 text-slate-300" />
+              <h3 className="text-xl font-medium mb-3">No items in queue</h3>
+              <p className="text-sm">
+                Process quote request emails from your inbox to see them here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-6">
+                <Badge variant="secondary" className="bg-blue-50 text-blue-700 px-3 py-1">
+                  {queueItems.length} Item{queueItems.length !== 1 ? 's' : ''} in Queue
                 </Badge>
-              )}
-            </div>
-            
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {queueItems.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <User className="h-4 w-4 text-slate-400" />
-                        <span className="font-medium text-slate-900">
-                          {item.customerInfo.name}
-                        </span>
-                        <span className="text-slate-500 text-sm">({item.customerInfo.email})</span>
-                        {getStatusBadge(item.status)}
-                      </div>
-                      <h3 className="font-semibold text-slate-900 mb-1">
-                        {item.email.subject}
-                      </h3>
-                    </div>
-                    <div className="text-sm text-slate-500 ml-4">
-                      {formatDate(item.dateAdded)}
-                    </div>
-                  </div>
-                  
-                  {/* Detected Products */}
-                  <div className="mb-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Package className="h-4 w-4 text-slate-600" />
-                      <span className="text-sm font-medium text-slate-700">Detected Products:</span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2">
-                      {item.detectedProducts.map((product, index) => (
-                        <div key={index} className="bg-slate-50 p-2 rounded flex items-center justify-between">
-                          <div>
-                            <span className="font-medium">{product.product}</span>
-                            {product.productCode && (
-                              <span className="text-slate-500 ml-2">({product.productCode})</span>
-                            )}
-                            {product.brand && (
-                              <span className="text-slate-600 ml-2">- {product.brand}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">Qty: {product.quantity}</Badge>
-                            {getConfidenceBadge(product.confidence)}
-                          </div>
+                {queueItems.length >= MAX_QUEUE_ITEMS && (
+                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                    Queue limit reached (max {MAX_QUEUE_ITEMS})
+                  </Badge>
+                )}
+              </div>
+              
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {queueItems.map((item) => (
+                  <div key={item.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all duration-200 hover:border-blue-200">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-3">
+                          <User className="h-5 w-5 text-slate-400" />
+                          <span className="font-semibold text-slate-900 text-lg">
+                            {item.customerInfo.name}
+                          </span>
+                          <span className="text-slate-500 text-sm">({item.customerInfo.email})</span>
+                          {getStatusBadge(item.status)}
                         </div>
-                      ))}
+                        <h3 className="font-semibold text-slate-900 mb-2 text-lg">
+                          {item.email.subject}
+                        </h3>
+                      </div>
+                      <div className="text-sm text-slate-500 ml-4 bg-slate-50 px-3 py-1 rounded-full">
+                        {formatDate(item.dateAdded)}
+                      </div>
                     </div>
-                  </div>
+                    
+                    {/* Detected Products */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Package className="h-5 w-5 text-slate-600" />
+                        <span className="text-sm font-semibold text-slate-700">Detected Products:</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        {item.detectedProducts.map((product, index) => (
+                          <div key={index} className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="font-semibold text-slate-900">{product.product}</span>
+                                {product.productCode && (
+                                  <span className="text-slate-500 ml-2">({product.productCode})</span>
+                                )}
+                                {product.brand && (
+                                  <span className="text-slate-600 ml-2">- {product.brand}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-white">Qty: {product.quantity}</Badge>
+                                {getConfidenceBadge(product.confidence)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-                  {/* Email Preview */}
-                  <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded mb-3">
-                    <p>{item.email.snippet || item.email.body?.substring(0, 150) + '...'}</p>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="text-xs">
-                      ID: {item.id}
-                    </Badge>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Remove
-                      </Button>
-                      {item.status !== 'completed' && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSendResponse(item)}
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                          >
-                            <Mail className="h-4 w-4 mr-1" />
-                            Send Response
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleCompleteQuote(item.id)}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            Mark Complete
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleEditQuote(item)}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit Quote
-                          </Button>
-                        </>
-                      )}
+                    {/* Email Preview */}
+                    <div className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg mb-4 border-l-4 border-blue-500">
+                      <p>{item.email.snippet || item.email.body?.substring(0, 150) + '...'}</p>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="text-xs bg-slate-100">
+                        ID: {item.id}
+                      </Badge>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Remove
+                        </Button>
+                        {item.status !== 'completed' && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePreviewQuote(item)}
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              Preview Quote
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleCompleteQuote(item.id)}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Mark Complete
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleEditQuote(item)}
+                              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit Quote
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      <QuotePreviewModal
+        open={showPreviewModal}
+        onOpenChange={setShowPreviewModal}
+        queueItem={selectedItem}
+        onSend={handleSendResponse}
+        onNavigateToTemplates={handleEditQuote}
+      />
+    </>
   );
 }
 
